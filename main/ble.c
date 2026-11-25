@@ -255,9 +255,58 @@ static void advertise(void) {
     else if (!rc) printf("[BLE] anuncio ativo\n");
 }
 
+/* ---- diagnostico: o proprio signer procura aparelhos BLE por perto ---- */
+#define SCAN_MAX 40
+static uint8_t s_seen[SCAN_MAX][6];
+static int8_t s_seen_rssi[SCAN_MAX];
+static int s_seen_n;
+static volatile int s_scanning;
+
+static int scan_event(struct ble_gap_event *ev, void *arg) {
+    if (ev->type == BLE_GAP_EVENT_DISC) {
+        const uint8_t *a = ev->disc.addr.val;
+        for (int i = 0; i < s_seen_n; i++)
+            if (!memcmp(s_seen[i], a, 6)) { if (ev->disc.rssi > s_seen_rssi[i]) s_seen_rssi[i] = ev->disc.rssi; return 0; }
+        if (s_seen_n < SCAN_MAX) { memcpy(s_seen[s_seen_n], a, 6); s_seen_rssi[s_seen_n++] = ev->disc.rssi; }
+    } else if (ev->type == BLE_GAP_EVENT_DISC_COMPLETE) {
+        s_scanning = 0;
+    }
+    return 0;
+}
+
+void ble_scan_test(void) {
+    if (ble_connected()) { printf("Desconecte o celular antes do teste.\n"); return; }
+    ble_gap_adv_stop();
+    s_seen_n = 0; s_scanning = 1;
+    struct ble_gap_disc_params dp = {.itvl = 0x50, .window = 0x30, .passive = 1, .filter_duplicates = 0};
+    int rc = ble_gap_disc(s_own_addr_type, 6000, &dp, scan_event, NULL);
+    if (rc) { printf("[BLE] erro ao iniciar busca: %d\n", rc); s_scanning = 0; advertise(); return; }
+    printf("Procurando aparelhos BLE por 6 s...\n");
+    while (s_scanning) vTaskDelay(pdMS_TO_TICKS(100));
+    int best = -127;
+    for (int i = 0; i < s_seen_n; i++) {
+        printf("  %02x:%02x:%02x:%02x:%02x:%02x  %d dBm\n", s_seen[i][5], s_seen[i][4], s_seen[i][3],
+               s_seen[i][2], s_seen[i][1], s_seen[i][0], s_seen_rssi[i]);
+        if (s_seen_rssi[i] > best) best = s_seen_rssi[i];
+    }
+    printf("Total: %d aparelhos. Sinal mais forte: %d dBm.\n", s_seen_n, s_seen_n ? best : 0);
+    if (!s_seen_n) printf("=> O radio nao ouviu nada: provavel problema de antena/hardware desta placa.\n");
+    else if (best < -80) printf("=> Recepcao muito fraca mesmo de perto: antena ruim ou placa com defeito.\n");
+    else printf("=> O radio recebe bem. Procure no celular pelo endereco acima do signer (comando 'mac').\n");
+    advertise();
+}
+
+void ble_print_addr(void) {
+    uint8_t a[6] = {0};
+    ble_hs_id_copy_addr(s_own_addr_type, a, NULL);
+    printf("[BLE] endereco do signer: %02X:%02X:%02X:%02X:%02X:%02X (tipo %s)\n", a[5], a[4], a[3], a[2], a[1], a[0],
+           s_own_addr_type == BLE_OWN_ADDR_PUBLIC ? "publico" : "aleatorio");
+}
+
 static void on_sync(void) {
     ble_hs_util_ensure_addr(0);
     ble_hs_id_infer_auto(0, &s_own_addr_type);
+    ble_print_addr();
     advertise();
     printf("[BLE] anunciando como \"%s\"\n", s_name);
 }

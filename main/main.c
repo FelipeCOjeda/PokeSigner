@@ -27,7 +27,7 @@
 #include "display.h"
 #include "board.h"
 
-#define FW_VERSION      "0.6.3"
+#define FW_VERSION      "0.6.4"
 #define APPROVE_HOLD_MS 2000
 #define CONFIRM_TIMEOUT_MS 120000
 #define NVS_NS          "pokesigner"
@@ -347,7 +347,7 @@ static void worker_task(void *arg) {
 static void console_task(void *arg) {
     char line[64];
     for (;;) {
-        printf("\nComandos: info | girar | potencia | unpair | wipe\n> ");
+        printf("\nComandos: info | girar | potencia | mac | scan | unpair | wipe\n> ");
         read_line(line, sizeof(line), RL_EMPTY);
         if (!strcmp(line, "info")) {
             if (bs_signer_get_info(0, 0, s_text, sizeof(s_text)) == 0) printf("%s\n", s_text);
@@ -363,6 +363,10 @@ static void console_task(void *arg) {
             t = (int8_t)((t < 0 ? 1 : t + 1) % 5);
             txp_save(t);
             printf("Potencia BLE agora: %d dBm (salvo). Repita para trocar; teste a busca no celular.\n", ble_set_tx_power(t));
+        } else if (!strcmp(line, "mac")) {
+            ble_print_addr();
+        } else if (!strcmp(line, "scan")) {
+            ble_scan_test();
         } else if (!strcmp(line, "unpair")) {
             ble_forget_bonds();
             printf("Pareamentos BLE apagados.\n");

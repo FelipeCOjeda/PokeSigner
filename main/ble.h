@@ -36,3 +36,7 @@ void ble_release_rx(void);     // worker finished with the request buffer
 void ble_forget_bonds(void);
 // TX power index into {-6, 0, +3, +6, +9} dBm; returns the dBm value applied.
 int  ble_set_tx_power(int idx);
+
+// diagnostics (serial console)
+void ble_scan_test(void);   // 6 s passive scan, prints devices heard
+void ble_print_addr(void);

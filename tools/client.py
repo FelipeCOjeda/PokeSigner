@@ -18,6 +18,7 @@ RX = "50530002-b5a3-f393-e0a9-50ca5e1d0001"   # escrita (celular -> signer)
 TX = "50530003-b5a3-f393-e0a9-50ca5e1d0001"   # notify (signer -> celular)
 
 CMD_GET_INFO, CMD_SIGN_PSBT, CMD_PING = 0x01, 0x02, 0x03
+CMD_CONFIRM, CMD_CANCEL, CMD_NEXT, CMD_PREV = 0x04, 0x05, 0x06, 0x07
 RSP_INFO, RSP_SIGNED, RSP_PONG, RSP_STATUS, RSP_ERROR = 0x81, 0x82, 0x83, 0x90, 0xFF
 
 
@@ -36,11 +37,31 @@ class Framer:
             del self.buf[:5 + ln]
 
 
-async def request(client, framer, cmd, payload=b"", timeout=180):
+async def send(client, cmd, payload=b""):
     frame = bytes([cmd]) + struct.pack("<I", len(payload)) + payload
     chunk = max(20, client.mtu_size - 3)
     for i in range(0, len(frame), chunk):
         await client.write_gatt_char(RX, frame[i:i + chunk], response=True)
+
+
+async def remote_control(client):
+    """Durante a revisao: ENTER = proxima pagina, 'v' = voltar, 'x' = cancelar, 6 digitos = aprovar."""
+    loop = asyncio.get_running_loop()
+    print("Controle pelo PC: ENTER=proxima  v=voltar  x=cancelar  <codigo da tela>=aprovar")
+    while True:
+        line = (await loop.run_in_executor(None, sys.stdin.readline)).strip().lower()
+        if line == "x":
+            await send(client, CMD_CANCEL)
+        elif line == "v":
+            await send(client, CMD_PREV)
+        elif line.isdigit() and len(line) == 6:
+            await send(client, CMD_CONFIRM, line.encode())
+        else:
+            await send(client, CMD_NEXT)
+
+
+async def request(client, framer, cmd, payload=b"", timeout=180):
+    await send(client, cmd, payload)
     while True:
         rsp, data = await asyncio.wait_for(framer.q.get(), timeout)
         if rsp == RSP_STATUS:
@@ -81,7 +102,11 @@ async def main():
             raw = open(a.file, "rb").read()
             if not raw.startswith(b"psbt\xff"):
                 raw = base64.b64decode(raw.strip())
-            _, signed = await request(client, framer, CMD_SIGN_PSBT, raw)
+            ctl = asyncio.create_task(remote_control(client))
+            try:
+                _, signed = await request(client, framer, CMD_SIGN_PSBT, raw)
+            finally:
+                ctl.cancel()
             if a.out:
                 open(a.out, "wb").write(signed)
                 print("Salvo em", a.out)

@@ -7,6 +7,11 @@
 #define CMD_GET_INFO   0x01   // payload: [network:1 (0=main,1=test)] [account:4 LE] (both optional)
 #define CMD_SIGN_PSBT  0x02   // payload: raw PSBT bytes (binary, not base64)
 #define CMD_PING       0x03
+// remote control during an on-device review (accepted while a SIGN_PSBT is pending)
+#define CMD_CONFIRM    0x04   // payload: 6 ASCII digits shown on the device screen
+#define CMD_CANCEL     0x05
+#define CMD_NEXT       0x06   // next review page
+#define CMD_PREV       0x07   // previous review page
 
 #define RSP_INFO       0x81   // JSON
 #define RSP_SIGNED     0x82   // raw signed PSBT
@@ -19,7 +24,7 @@
 // Called from the BLE stack when a full request arrived. Must return quickly.
 typedef void (*ble_request_cb)(uint8_t cmd, const uint8_t *payload, size_t len);
 
-void ble_start(const char *name, ble_request_cb cb);
+void ble_start(const char *name, ble_request_cb cb, ble_request_cb control_cb);
 int  ble_send(uint8_t cmd, const uint8_t *payload, size_t len);
 int  ble_connected(void);
 void ble_release_rx(void);     // worker finished with the request buffer

@@ -10,6 +10,9 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
+#include "esp_random.h"
+#include "freertos/queue.h"
+#include "ble.h"
 
 #define BTN CONFIG_PS_BUTTON_GPIO
 
@@ -19,6 +22,23 @@ static uint32_t s_fp;
 static ui_link_t s_link = UI_ADV;
 static volatile int s_modal;
 static grid_t G;
+
+typedef struct { uint8_t cmd; char code[8]; } remote_ev_t;
+static QueueHandle_t s_remote;
+static volatile int s_reviewing;
+static void (*s_status_cb)(const char *);
+
+void ui_set_status_cb(void (*cb)(const char *)) { s_status_cb = cb; }
+static void status(const char *m) { if (s_status_cb) s_status_cb(m); }
+
+void ui_remote_event(uint8_t cmd, const uint8_t *payload, size_t len) {
+    if (!s_remote) return;
+    if (!s_reviewing) { status("nada para confirmar agora"); return; }
+    remote_ev_t ev = {.cmd = cmd};
+    size_t n = len < sizeof(ev.code) - 1 ? len : sizeof(ev.code) - 1;
+    memcpy(ev.code, payload, n);
+    xQueueSend(s_remote, &ev, 0);
+}
 
 /* ------------------------------------------------------------ button */
 
@@ -30,6 +50,25 @@ int ui_wait_button(int hold_ms, int timeout_ms, int (*abort_cb)(void)) {
     for (;;) {
         if (abort_cb && abort_cb()) return BTN_TIMEOUT;
         if (timeout_ms > 0 && (esp_timer_get_time() - t0) / 1000 > timeout_ms) return BTN_TIMEOUT;
+        if (pressed()) {
+            int64_t p0 = esp_timer_get_time();
+            while (pressed()) vTaskDelay(pdMS_TO_TICKS(10));
+            int held = (int)((esp_timer_get_time() - p0) / 1000);
+            if (held < 40) continue;
+            return held >= hold_ms ? BTN_LONG : BTN_SHORT;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+}
+
+// Like ui_wait_button, but also returns BTN_REMOTE when the phone sent a control event.
+static int wait_input(int hold_ms, int timeout_ms, int (*abort_cb)(void), remote_ev_t *ev) {
+    int64_t t0 = esp_timer_get_time();
+    while (pressed()) vTaskDelay(pdMS_TO_TICKS(10));
+    for (;;) {
+        if (abort_cb && abort_cb()) return BTN_TIMEOUT;
+        if (timeout_ms > 0 && (esp_timer_get_time() - t0) / 1000 > timeout_ms) return BTN_TIMEOUT;
+        if (s_remote && xQueueReceive(s_remote, ev, 0) == pdTRUE) return BTN_REMOTE;
         if (pressed()) {
             int64_t p0 = esp_timer_get_time();
             while (pressed()) vTaskDelay(pdMS_TO_TICKS(10));
@@ -102,6 +141,7 @@ void ui_init(uint8_t orientation) {
     gpio_config_t io = {.pin_bit_mask = 1ULL << BTN, .mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE};
     gpio_config(&io);
     s_disp = disp_init(orientation) == 0;
+    s_remote = xQueueCreate(4, sizeof(remote_ev_t));
     g_clear();
     g_box(2, 7);
     g_center(4, "POKESIGNER", P_PURPLE);
@@ -127,7 +167,7 @@ void ui_idle(ui_link_t link) {
     g_clear();
     g_box(0, 9);
     g_text(1, 1, "POKESIGNER", P_PURPLE);
-    g_right(1, "v0.3.3", P_LAV);
+    g_right(1, "v0.4.0", P_LAV);
     snprintf(b, sizeof(b), "ID   %08" PRIX32, s_fp);
     g_text(3, 1, b, P_INK);
     const char *sfx = strchr(s_name, '-');
@@ -229,7 +269,7 @@ static void amount_line(int r, uint64_t sats, int fg) {
 }
 
 // Pages: 0 encounter/summary, 1..K destinations, [change], confirm.
-static void build_page(const bs_psbt_t *p, int idx, int total) {
+static void build_page(const bs_psbt_t *p, int idx, int total, const char *code) {
     size_t K = count_dest(p);
     int has_change = p->change_total > 0;
     char b[40];
@@ -291,32 +331,69 @@ static void build_page(const bs_psbt_t *p, int idx, int total) {
             g_text(3, 1, b, fee_high(p) ? P_RED : P_INK);
         }
         g_box(5, 9);
-        g_text(6, 1, T_ARROW "APROVAR: SEGURE", P_GREEN);
-        g_text(7, 1, " REJEITAR: TOQUE", P_RED);
-        if (p->locktime) { snprintf(b, sizeof(b), "locktime %" PRIu32, p->locktime); g_text(8, 1, b, P_PURPLE); }
+        g_big(6, code, P_INK);                  // confirmation code for the phone
+        g_text(8, 1, "OK:BOOT2s/codigo", P_GREEN);
+        g_right(8, "X", P_RED);
     }
 }
 
 int ui_review(const bs_psbt_t *p, int timeout_ms, int (*abort_cb)(void)) {
+    remote_ev_t ev;
+    if (s_remote) xQueueReset(s_remote);
+    s_reviewing = 1;
     if (!s_disp) {
-        int r = ui_wait_button(2000, timeout_ms, abort_cb);
-        return r == BTN_LONG ? 1 : r == BTN_SHORT ? 0 : -1;
+        // Without a screen there is no trusted channel for a code: only the button approves.
+        int result = -1;
+        for (;;) {
+            int r = wait_input(2000, timeout_ms, abort_cb, &ev);
+            if (r == BTN_REMOTE) {
+                if (ev.cmd == CMD_CANCEL) { result = 0; break; }
+                status("sem tela: aprove segurando o botao BOOT");
+                continue;
+            }
+            result = r == BTN_LONG ? 1 : r == BTN_SHORT ? 0 : -1;
+            break;
+        }
+        s_reviewing = 0;
+        return result;
     }
     s_modal = 1;
+    char code[8];
+    snprintf(code, sizeof(code), "%06" PRIu32, esp_random() % 1000000);
     int total = 1 + (int)count_dest(p) + (p->change_total > 0) + 1;
     int64_t t0 = esp_timer_get_time();
-    int idx = 0, result = -1;
+    int idx = 0, result = -1, wrong = 0;
+    char msg[64];
     for (;;) {
-        build_page(p, idx, total);
+        build_page(p, idx, total, code);
         g_show();
+        snprintf(msg, sizeof(msg), "pagina %d/%d%s", idx + 1, total,
+                 idx == total - 1 ? ": digite o codigo da tela para aprovar" : "");
+        status(msg);
         int left = timeout_ms - (int)((esp_timer_get_time() - t0) / 1000);
         if (left <= 0) break;
-        int r = ui_wait_button(2000, left, abort_cb);
+        int r = wait_input(2000, left, abort_cb, &ev);
         if (r == BTN_TIMEOUT) break;
+        if (r == BTN_REMOTE) {
+            if (ev.cmd == CMD_CANCEL) { result = 0; break; }
+            if (ev.cmd == CMD_NEXT) { if (idx < total - 1) idx++; continue; }
+            if (ev.cmd == CMD_PREV) { if (idx > 0) idx--; continue; }
+            if (ev.cmd == CMD_CONFIRM) {
+                if (idx != total - 1) { status("revise todas as paginas antes de aprovar"); continue; }
+                if (strcmp(ev.code, code) == 0) { result = 1; break; }
+                if (++wrong >= 3) { status("3 codigos errados: transacao rejeitada"); result = 0; break; }
+                snprintf(msg, sizeof(msg), "codigo incorreto (%d de 3)", wrong);
+                status(msg);
+                continue;
+            }
+            continue;
+        }
         if (idx < total - 1) { idx++; continue; }  // every page must be seen
         result = (r == BTN_LONG) ? 1 : 0;
         break;
     }
+    memset(code, 0, sizeof(code));
+    s_reviewing = 0;
     if (result == 1) ui_msg("APROVADO!", "Assinando o PSBT...", NULL, C_GREEN);
     else if (result == 0) ui_msg("REJEITADO", "Voce recusou o PSBT.", NULL, C_RED);
     else ui_msg("FUGIU!", "O PSBT fugiu! (tempo", "esgotado ou desconexao)", C_ORANGE);

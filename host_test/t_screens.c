@@ -23,7 +23,7 @@ int main(int argc,char**argv){
   FILE*f=fopen(argv[2],"rb"); size_t n=fread(buf,1,sizeof buf,f); fclose(f);
   static bs_psbt_t P; int r=bs_psbt_analyze(buf,n,&P); if(r){printf("err %d\n",r);return 1;}
   int total = 1 + (int)count_dest(&P) + (P.change_total > 0) + 1;
-  for(int i=0;i<total;i++){ build_page(&P,i,total); g_show(); save();}
+  for(int i=0;i<total;i++){ build_page(&P,i,total,"482913"); g_show(); save();}
   ui_msg("FUGIU!", "O PSBT fugiu! (tempo", "esgotado ou desconexao)", C_ORANGE); save();
   return 0;
 }

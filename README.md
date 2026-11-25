@@ -99,6 +99,18 @@ Payload máximo: 32 KB.
 | `0x01` GET_INFO | `[rede:1 (0 main, 1 test)][conta:4 LE]` (opcionais) | `0x81` JSON |
 | `0x02` SIGN_PSBT | PSBT **binário** | `0x90` status, depois `0x82` PSBT assinado ou `0xFF` erro |
 | `0x03` PING | — | `0x83` texto |
+| `0x04` CONFIRM | 6 dígitos ASCII (o código da tela) | — (aprova se estiver na última página e o código bater) |
+| `0x05` CANCEL | — | — (rejeita) |
+| `0x06` NEXT / `0x07` PREV | — | — (muda a página da revisão) |
+
+### Aprovação por código (estilo token)
+
+Na última página da revisão a placa mostra um **código aleatório de 6 dígitos**, novo a cada transação.
+O usuário pode aprovar segurando BOOT **ou** digitando esse código no celular (`0x04`). Um app comprometido
+não vê a tela da placa, então não consegue aprovar sozinho. Cancelar e navegar pelas páginas pelo celular são
+livres. O `CONFIRM` só vale na última página, e 3 códigos errados rejeitam a transação. Durante a revisão, a placa
+envia `0x90` com a página atual e o resultado de cada tentativa. Os comandos 0x04–0x07 são aceitos **enquanto um
+SIGN_PSBT está pendente**. Sem tela, só o botão aprova.
 
 Resposta de GET_INFO:
 

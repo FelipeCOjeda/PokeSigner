@@ -26,7 +26,7 @@
 #include "ui.h"
 #include "display.h"
 
-#define FW_VERSION      "0.3.3"
+#define FW_VERSION      "0.4.0"
 #define APPROVE_HOLD_MS 2000
 #define CONFIRM_TIMEOUT_MS 120000
 #define NVS_NS          "pokesigner"
@@ -236,6 +236,10 @@ static void on_request(uint8_t cmd, const uint8_t *payload, size_t len) {
 
 static int disconnected(void) { return !ble_connected(); }
 
+static void on_control(uint8_t cmd, const uint8_t *payload, size_t len) { ui_remote_event(cmd, payload, len); }
+
+static void phone_status(const char *m) { ble_send(RSP_STATUS, (const uint8_t *)m, strlen(m)); }
+
 static void reply_err(const char *msg) { ble_send(RSP_ERROR, (const uint8_t *)msg, strlen(msg)); }
 
 static void handle_sign(const uint8_t *psbt, size_t len) {
@@ -264,7 +268,7 @@ static void handle_sign(const uint8_t *psbt, size_t len) {
     bs_psbt_summary(&s_psbt, s_text, sizeof(s_text));
     printf("\n%s\n", s_text);
     if (ui_has_display())
-        printf("Revise na tela. BOOT avanca as paginas; na ultima: segure 2s = APROVAR, toque = REJEITAR.\n");
+        printf("Revise na tela. BOOT (ou o celular) avanca as paginas; na ultima: segure BOOT 2s ou digite no celular o codigo da tela = APROVAR.\n");
     else
         printf("SEGURE o botao BOOT por 2s para APROVAR. Toque rapido = REJEITAR. (expira em 2 min)\n");
     const char *st = "aguardando confirmacao no dispositivo";
@@ -307,6 +311,9 @@ static void worker_task(void *arg) {
         }
         case CMD_SIGN_PSBT:
             handle_sign(j.payload, j.len);
+            break;
+        case CMD_CONFIRM: case CMD_CANCEL: case CMD_NEXT: case CMD_PREV:
+            reply_err("nada para confirmar agora");
             break;
         default:
             reply_err("comando desconhecido");
@@ -390,7 +397,8 @@ void app_main(void) {
     snprintf(name, sizeof(name), "PokeSigner-%02X%02X", mac[4], mac[5]);
     ui_set_identity(name, bs_signer_fingerprint());
     ui_idle(UI_ADV);
-    ble_start(name, on_request);
+    ui_set_status_cb(phone_status);
+    ble_start(name, on_request, on_control);
 
     xTaskCreate(console_task, "console", 6144, NULL, 3, NULL);
 }

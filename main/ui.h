@@ -2,7 +2,12 @@
 #include <stdint.h>
 #include "bs_signer.h"
 
-enum { BTN_TIMEOUT = -1, BTN_SHORT = 0, BTN_LONG = 1 };
+enum { BTN_TIMEOUT = -1, BTN_SHORT = 0, BTN_LONG = 1, BTN_REMOTE = 2 };
+
+// Remote control from the phone (same codes as the BLE commands 0x04..0x07).
+void ui_remote_event(uint8_t cmd, const uint8_t *payload, size_t len);
+// Informative messages for the phone during a review (e.g. "codigo incorreto").
+void ui_set_status_cb(void (*cb)(const char *msg));
 
 // message colors for ui_msg
 #define C_WHITE  0

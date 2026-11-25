@@ -5,7 +5,7 @@ assinador de PSBT em ESP32-C6 (placa Waveshare ESP32-C6-LCD-1.47) que conversa p
 
 - Firmware/protocolo: https://github.com/FelipeCOjeda/PokeSigner (`main/ble.c`, `main/ble.h`, `tools/client.py`)
 - Instalador web: https://felipecojeda.github.io/PokeSigner/
-- Estado: firmware v0.3.2 testado em placa real. O pareamento com o celular funcionou (nRF Connect).
+- Estado: firmware v0.4.0 (v0.3.2 testado em placa real. O pareamento com o celular funcionou (nRF Connect)).
 
 ---
 
@@ -48,7 +48,16 @@ O quadro pode chegar fatiado em várias escritas ou notificações: acumule até
 |---|---|---|
 | `0x01` GET_INFO | `[rede:1 (0=main, 1=test)][conta:4 LE]` | `0x81` + JSON (UTF-8) |
 | `0x02` SIGN_PSBT | PSBT **binário** (não base64) | `0x90` status (texto, informativo), depois `0x82` PSBT assinado (binário) **ou** `0xFF` erro (texto) |
-| `0x03` PING | vazio | `0x83` texto `PokeSigner 0.3.2 fp=xxxxxxxx` |
+| `0x03` PING | vazio | `0x83` texto `PokeSigner 0.4.0 fp=xxxxxxxx` |
+| `0x04` CONFIRM | 6 dígitos ASCII | nenhuma própria (resultado vem no `0x82`/`0xFF` do SIGN) |
+| `0x05` CANCEL | vazio | idem (o SIGN volta `0xFF rejeitado no dispositivo`) |
+| `0x06` NEXT / `0x07` PREV | vazio | `0x90 pagina N/M` |
+
+**Aprovação por código (desde v0.4.0):** enquanto o SIGN_PSBT está pendente, o app pode mostrar botões
+◀ ▶ ✖ e um campo "código da tela". A placa exibe na última página um **código de 6 dígitos aleatório** e aceita
+`0x04` + código como aprovação (3 erros = rejeita). O app **não tem como saber o código**; o usuário lê na
+placa e digita. É isso que mantém a segurança mesmo com o celular comprometido. Os `0x90` trazem
+"pagina N/M", "codigo incorreto (k de 3)" etc. Mostre-os no diálogo.
 
 - `0xFF` pode chegar em qualquer comando. Exemplos: `rejeitado no dispositivo`, `tempo esgotado`, `nenhuma entrada pertence a esta seed`, `derivacao nao confere com o script`, `UTXO ausente/inconsistente`, `ocupado`.
 - No SIGN_PSBT o usuário revisa as páginas na placa e segura BOOT por 2 s. **Timeout da placa: 2 min.** Use timeout de leitura ≥ 3 min no app.

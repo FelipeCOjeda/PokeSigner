@@ -26,7 +26,10 @@ static const ble_uuid128_t RX_UUID = BLE_UUID128_INIT(
 static const ble_uuid128_t TX_UUID = BLE_UUID128_INIT(
     0x01, 0x00, 0x1d, 0x5e, 0xca, 0x50, 0xa9, 0xe0, 0x93, 0xf3, 0xa3, 0xb5, 0x03, 0x00, 0x53, 0x50);
 
-static ble_request_cb s_cb;
+static ble_request_cb s_cb, s_ctrl_cb;
+// small separate assembler for control frames that arrive while a request is busy
+static uint8_t c_hdr[5], c_buf[16];
+static size_t c_hdr_len, c_len, c_expect;
 static uint16_t s_conn = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t s_tx_handle;
 static uint16_t s_mtu = 23;
@@ -40,7 +43,7 @@ static volatile int s_busy;
 
 static void advertise(void);
 
-static void rx_reset(void) { s_hdr_len = 0; s_rx_len = 0; s_rx_expect = 0; }
+static void rx_reset(void) { s_hdr_len = 0; s_rx_len = 0; s_rx_expect = 0; c_hdr_len = 0; c_len = 0; c_expect = 0; }
 
 void ble_release_rx(void) { rx_reset(); s_busy = 0; }
 
@@ -48,9 +51,32 @@ int ble_connected(void) { return s_conn != BLE_HS_CONN_HANDLE_NONE; }
 
 static void send_error_now(const char *msg) { ble_send(RSP_ERROR, (const uint8_t *)msg, strlen(msg)); }
 
+static int is_control(uint8_t c) { return c >= CMD_CONFIRM && c <= CMD_PREV; }
+
+static void ctrl_feed(const uint8_t *d, size_t n) {
+    while (n) {
+        if (c_hdr_len < 5) {
+            size_t k = 5 - c_hdr_len < n ? 5 - c_hdr_len : n;
+            memcpy(c_hdr + c_hdr_len, d, k); c_hdr_len += k; d += k; n -= k;
+            if (c_hdr_len < 5) return;
+            c_expect = c_hdr[1] | c_hdr[2] << 8 | c_hdr[3] << 16 | (uint32_t)c_hdr[4] << 24;
+            c_len = 0;
+            if (!is_control(c_hdr[0]) || c_expect > sizeof(c_buf)) {
+                c_hdr_len = 0; send_error_now("ocupado"); return;
+            }
+        }
+        size_t k = c_expect - c_len < n ? c_expect - c_len : n;
+        memcpy(c_buf + c_len, d, k); c_len += k; d += k; n -= k;
+        if (c_len == c_expect) {
+            if (s_ctrl_cb) s_ctrl_cb(c_hdr[0], c_buf, c_len);
+            c_hdr_len = 0; c_len = 0;
+        }
+    }
+}
+
 static void rx_feed(const uint8_t *d, size_t n) {
     while (n) {
-        if (s_busy) { send_error_now("ocupado"); return; }
+        if (s_busy) { ctrl_feed(d, n); return; }
         if (s_hdr_len < 5) {
             size_t k = 5 - s_hdr_len < n ? 5 - s_hdr_len : n;
             memcpy(s_hdr + s_hdr_len, d, k); s_hdr_len += k; d += k; n -= k;
@@ -223,8 +249,8 @@ static void host_task(void *arg) {
     nimble_port_freertos_deinit();
 }
 
-void ble_start(const char *name, ble_request_cb cb) {
-    s_cb = cb;
+void ble_start(const char *name, ble_request_cb cb, ble_request_cb control_cb) {
+    s_cb = cb; s_ctrl_cb = control_cb;
     strncpy(s_name, name, sizeof(s_name) - 1);
     ESP_ERROR_CHECK(nimble_port_init());
     ble_hs_cfg.sync_cb = on_sync;

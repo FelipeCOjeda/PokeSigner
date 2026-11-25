@@ -27,7 +27,7 @@
 #include "display.h"
 #include "board.h"
 
-#define FW_VERSION      "0.6.1"
+#define FW_VERSION      "0.6.2"
 #define APPROVE_HOLD_MS 2000
 #define CONFIRM_TIMEOUT_MS 120000
 #define NVS_NS          "pokesigner"
@@ -379,6 +379,10 @@ void app_main(void) {
     ui_init(orient);
     vTaskDelay(pdMS_TO_TICKS(1500));  // time for the serial monitor to attach
     printf("\nPokeSigner %s (%s)\n", FW_VERSION, BOARD_NAME);
+    esp_reset_reason_t why = esp_reset_reason();
+    if (why == ESP_RST_PANIC || why == ESP_RST_INT_WDT || why == ESP_RST_TASK_WDT || why == ESP_RST_WDT || why == ESP_RST_BROWNOUT)
+        printf("ATENCAO: a placa reiniciou por erro (motivo %d: %s). Me mande este log.\n", (int)why,
+               why == ESP_RST_PANIC ? "panic/excecao" : why == ESP_RST_BROWNOUT ? "queda de energia" : "watchdog");
 
     seed_store_t st;
     memset(&st, 0, sizeof(st));
@@ -410,5 +414,5 @@ void app_main(void) {
     ble_start(name, on_request, on_control);
     printf("Memoria livre: %u bytes (minimo %u)\n", (unsigned)esp_get_free_heap_size(), (unsigned)esp_get_minimum_free_heap_size());
 
-    xTaskCreate(console_task, "console", 6144, NULL, 3, NULL);
+    xTaskCreate(console_task, "console", 8192, NULL, 3, NULL);
 }

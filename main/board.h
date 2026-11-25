@@ -19,6 +19,7 @@
 #define SPLASH_SC   3
 #define SPLASH_Y    40
 #define CELEB_SC    3
+#define MASCOT_ANIM 0          // static mascot on the C3
 #else
 // 320x172 ST7789 landscape: 20x10 tiles of 8x8 drawn at 2x
 #define LCD_W   320
@@ -35,6 +36,7 @@
 #define SPLASH_SC   4
 #define SPLASH_Y    (TOPM + 62)
 #define CELEB_SC    4
+#define MASCOT_ANIM 1
 #endif
 
 #define TW      (GW - 2)                 // text columns inside a box

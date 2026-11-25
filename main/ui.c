@@ -247,6 +247,7 @@ static void idle_sprite(const char *const *f) {
     disp_sprite(f, IDLE_SPR_X, IDLE_SPR_Y, 16 * IDLE_SPR_SC, 16 * IDLE_SPR_SC, 0, 0, IDLE_SPR_SC, 0, P_WHITE);
 }
 
+#if MASCOT_ANIM
 // Blinks the idle mascot every few seconds.
 static void blink_task(void *arg) {
     for (;;) {
@@ -261,6 +262,7 @@ static void blink_task(void *arg) {
         UI_UNLOCK();
     }
 }
+#endif
 
 void ui_init(uint8_t orientation) {
     gpio_config_t io = {.mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE};
@@ -275,12 +277,16 @@ void ui_init(uint8_t orientation) {
     lay_render();
     if (s_disp) {
         int w = 16 * SPLASH_SC, x = (LCD_W - w) / 2;
+#if MASCOT_ANIM
         disp_sprite(SIGNY_OPEN, x, SPLASH_Y, w, w, 0, 0, SPLASH_SC, 0, P_WHITE);
         vTaskDelay(pdMS_TO_TICKS(500));
         disp_sprite(SIGNY_BLINK, x, SPLASH_Y, w, w, 0, 0, SPLASH_SC, 0, P_WHITE);
         vTaskDelay(pdMS_TO_TICKS(150));
         disp_sprite(SIGNY_HAPPY, x, SPLASH_Y, w, w, 0, 0, SPLASH_SC, 0, P_WHITE);
-        xTaskCreate(blink_task, "blink", 3072, NULL, 2, NULL);
+        xTaskCreate(blink_task, "blink", 6144, NULL, 2, NULL);
+#else
+        disp_sprite(SIGNY_HAPPY, x, SPLASH_Y, w, w, 0, 0, SPLASH_SC, 0, P_WHITE);
+#endif
     }
 }
 
@@ -302,7 +308,7 @@ void ui_idle(ui_link_t link) {
     char b1[24], b2[24];
     lay_begin();
     box_t *b = lay_box(); b->fill = 1;
-    L_pair(b, P_PURPLE, "POKESIGNER", P_LAV, TW >= 16 ? "v0.6.1" : "");
+    L_pair(b, P_PURPLE, "POKESIGNER", P_LAV, TW >= 16 ? "v0.6.2" : "");
     L_blank(b);
     snprintf(b1, sizeof(b1), "ID  %08" PRIX32, s_fp);
     L_text(b, P_INK, b1);
@@ -386,12 +392,20 @@ void ui_celebrate(const char *l1, const char *l2) {
         {SIGNY_HAPPY, 0, 2, 170}, {SIGNY_HAPPY, 1, 1, 170}, {SIGNY_HAPPY, 0, 2, 300},
         {SIGNY_BLINK, 0, 0, 120}, {SIGNY_HAPPY, 0, 0, 500},
     };
+#if MASCOT_ANIM
     for (size_t i = 0; i < sizeof(SEQ) / sizeof(SEQ[0]); i++) {
         UI_LOCK();
         disp_sprite(SEQ[i].f, bx, by, bw, bh, pad, pad + (SEQ[i].up ? 0 : jump), sc, SEQ[i].sp, P_LAV);
         UI_UNLOCK();
         vTaskDelay(pdMS_TO_TICKS(SEQ[i].ms));
     }
+#else
+    (void)SEQ;
+    UI_LOCK();
+    disp_sprite(SIGNY_HAPPY, bx, by, bw, bh, pad, pad + jump, sc, 1, P_LAV);   // static, smiling
+    UI_UNLOCK();
+    vTaskDelay(pdMS_TO_TICKS(2000));
+#endif
     s_modal = 0;
 }
 

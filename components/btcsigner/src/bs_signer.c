@@ -16,6 +16,15 @@ static uint8_t g_mpriv[32], g_mchain[32];
 static uint32_t g_fp;
 static int g_ready;
 
+// diagnostics for "nothing to sign"
+static char g_detail[120];
+static uint32_t g_seen_fp;
+static int g_seen_any, g_seen_zero, g_seen_deriv;
+
+const char *bs_psbt_detail(void) { return g_detail; }
+int bs_psbt_foreign_fp(uint32_t *fp) { if (g_seen_any) *fp = g_seen_fp; return g_seen_any; }
+int bs_psbt_zero_fp(void) { return g_seen_zero; }
+
 const char *bs_strerror(int e) {
     switch (e) {
     case BS_OK: return "ok";
@@ -202,6 +211,9 @@ static uint32_t le32(const uint8_t *p) { return p[0] | p[1] << 8 | p[2] << 16 | 
 // value = fingerprint(4) || path (4*k). Returns 1 if fingerprint is ours and path fits.
 static int parse_keypath(const uint8_t *v, size_t vlen, uint32_t *path, size_t *depth) {
     if (vlen < 4 || (vlen - 4) % 4 || (vlen - 4) / 4 > BS_MAX_PATH) return 0;
+    g_seen_deriv = 1;
+    if (be32(v) == 0) g_seen_zero = 1;
+    else if (be32(v) != g_fp && !g_seen_any) { g_seen_fp = be32(v); g_seen_any = 1; }
     if (be32(v) != g_fp) return 0;
     *depth = (vlen - 4) / 4;
     for (size_t i = 0; i < *depth; i++) path[i] = le32(v + 4 + 4 * i);
@@ -288,6 +300,7 @@ int bs_psbt_analyze(const uint8_t *buf, size_t len, bs_psbt_t *p) {
     if (!g_ready) return BS_ERR_CRYPTO;
     memset(p, 0, sizeof(*p));
     p->buf = buf; p->len = len; p->testnet = -1;
+    g_detail[0] = 0; g_seen_fp = 0; g_seen_any = g_seen_zero = g_seen_deriv = 0;
     rd_t r = {buf, len, 0, 0};
     const uint8_t *magic = rd_bytes(&r, 5);
     if (!magic || memcmp(magic, "psbt\xff", 5)) return BS_ERR_PARSE;
@@ -465,7 +478,19 @@ int bs_psbt_analyze(const uint8_t *buf, size_t len, bs_psbt_t *p) {
     }
     if (r.err) return BS_ERR_PARSE;
 
-    if (p->n_sign == 0) return BS_ERR_NOTHING_TO_SIGN;
+    if (p->n_sign == 0) {
+        if (g_seen_any)
+            snprintf(g_detail, sizeof(g_detail), "PSBT e da carteira %08" PRIx32 ", este signer e %08" PRIx32
+                     " (outra seed ou passphrase)", g_seen_fp, g_fp);
+        else if (g_seen_zero)
+            snprintf(g_detail, sizeof(g_detail), "PSBT sem fingerprint (carteira importada so pela xpub); "
+                     "importe pelo PokeSigner ou com [fingerprint/caminho]xpub");
+        else if (!g_seen_deriv)
+            snprintf(g_detail, sizeof(g_detail), "PSBT sem dados de derivacao BIP32 nas entradas");
+        else if (!all_utxo)
+            snprintf(g_detail, sizeof(g_detail), "entradas sem witness_utxo");
+        return BS_ERR_NOTHING_TO_SIGN;
+    }
     if (p->testnet < 0) p->testnet = 0;
     for (size_t i = 0; i < p->n_in; i++)
         if (p->in[i].sign_type == 2 && !all_utxo) return BS_ERR_MISSING_UTXO;  // BIP341 needs all prevouts

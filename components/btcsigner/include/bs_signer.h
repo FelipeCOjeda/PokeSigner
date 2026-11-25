@@ -24,6 +24,10 @@ typedef enum {
 } bs_err_t;
 
 const char *bs_strerror(int err);
+// Extra human-readable detail about the last bs_psbt_analyze() failure (may be empty).
+const char *bs_psbt_detail(void);
+int bs_psbt_foreign_fp(uint32_t *fp);   // 1 if the PSBT carried another wallet's fingerprint
+int bs_psbt_zero_fp(void);              // 1 if it carried a zeroed (unknown) fingerprint
 
 // Loads the BIP39 seed (64 bytes). Must be called once before anything else.
 int bs_signer_init(const uint8_t seed[64]);

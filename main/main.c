@@ -26,7 +26,7 @@
 #include "ui.h"
 #include "display.h"
 
-#define FW_VERSION      "0.3.2"
+#define FW_VERSION      "0.3.3"
 #define APPROVE_HOLD_MS 2000
 #define CONFIRM_TIMEOUT_MS 120000
 #define NVS_NS          "pokesigner"
@@ -241,9 +241,22 @@ static void reply_err(const char *msg) { ble_send(RSP_ERROR, (const uint8_t *)ms
 static void handle_sign(const uint8_t *psbt, size_t len) {
     int r = bs_psbt_analyze(psbt, len, &s_psbt);
     if (r) {
-        printf("[PSBT] recusado: %s\n", bs_strerror(r));
-        reply_err(bs_strerror(r));
-        ui_msg("PSBT RECUSADO", bs_strerror(r), NULL, C_RED);
+        char why[200];
+        const char *d = bs_psbt_detail();
+        snprintf(why, sizeof(why), "%s%s%s", bs_strerror(r), d[0] ? ": " : "", d);
+        printf("[PSBT] recusado: %s\n", why);
+        reply_err(why);
+        uint32_t ffp;
+        char l1[24], l2[24];
+        if (r == BS_ERR_NOTHING_TO_SIGN && bs_psbt_foreign_fp(&ffp)) {
+            snprintf(l1, sizeof(l1), "PSBT:   %08" PRIX32 "  ", ffp);
+            snprintf(l2, sizeof(l2), "SIGNER: %08" PRIX32, bs_signer_fingerprint());
+            ui_msg("OUTRA CARTEIRA!", l1, l2, C_RED);
+        } else if (r == BS_ERR_NOTHING_TO_SIGN && bs_psbt_zero_fp()) {
+            ui_msg("SEM FINGERPRINT", "Importe a carteira", "pelo PokeSigner.", C_RED);
+        } else {
+            ui_msg("PSBT RECUSADO", bs_strerror(r), NULL, C_RED);
+        }
         vTaskDelay(pdMS_TO_TICKS(2500));
         ui_refresh_idle();
         return;

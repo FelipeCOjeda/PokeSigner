@@ -85,7 +85,7 @@
 
   <div class="card">
     <h2 class="px"><span class="n">&#9654;</span> 2. CONFIGURAR SEED</h2>
-    <p>Depois de gravar, clique em <b>Conectar</b> (mesma porta) e depois em <b>Mostrar menu</b>.</p>
+    <p>Depois de gravar, clique em <b>Conectar</b> (só aparece a porta da placa) e depois em <b>Mostrar menu</b>. O menu aparece aqui no terminal.</p>
     <div class="row">
       <button id="btnConnect">Conectar</button>
       <button id="btnMenu" disabled>Mostrar menu</button>
@@ -186,17 +186,27 @@
     }
   }
 
+  // Only list the board's own USB port (Espressif USB-Serial-JTAG), never Bluetooth/COM ports
+  const FILTERS = [{ usbVendorId: 0x303a }];
+  let wantReconnect = false;
+
+  async function openPort(p) {
+    port = p;
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    keepReading = true;
+    setConnected(true);
+    readLoop().then(disconnect);
+  }
+
   async function connect() {
     try {
-      port = await navigator.serial.requestPort();
-      await port.open({ baudRate: 115200 });
-      writer = port.writable.getWriter();
-      keepReading = true;
-      setConnected(true);
+      const p = await navigator.serial.requestPort({ filters: FILTERS });
+      await openPort(p);
       print("[conectado — clique em “Mostrar menu”]\n");
-      readLoop().then(disconnect);
     } catch (e) {
-      if (e.name !== "NotFoundError") print("\n[erro: " + e.message + "]\n");
+      if (e.name === "NotFoundError") print("\n[nenhuma placa escolhida. A placa aparece como “USB JTAG/serial debug unit”. Se a lista estiver vazia, troque o cabo USB.]\n");
+      else print("\n[erro: " + e.message + "]\n");
       port = null;
     }
   }
@@ -219,11 +229,12 @@
     if (!port) return;
     // RTS low pulse resets the ESP32-C6 through its USB-Serial-JTAG (same sequence as esptool)
     try {
+      wantReconnect = true;
       await port.setSignals({ dataTerminalReady: false, requestToSend: true });
       await new Promise(r => setTimeout(r, 120));
       await port.setSignals({ dataTerminalReady: false, requestToSend: false });
       term.textContent = "";
-      print("[reiniciando... se a conexão cair, clique em Conectar de novo]\n");
+      print("[reiniciando... reconecta sozinho em alguns segundos]\n");
     } catch (e) { print("\n[não consegui reiniciar: aperte o botão RESET da placa]\n"); }
   }
 
@@ -234,7 +245,16 @@
   $("btnSend").onclick = () => { const v = cmd.value; cmd.value = ""; send(v); if (mask.checked) { mask.checked = false; applyMask(); } };
   cmd.addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnSend").onclick(); });
   document.querySelectorAll(".quick").forEach(b => b.onclick = () => send(b.dataset.v));
-  if (navigator.serial) navigator.serial.addEventListener("disconnect", () => { if (port) { print("\n[placa desconectada]\n"); disconnect(); } });
+  if (navigator.serial) {
+    navigator.serial.addEventListener("disconnect", () => { if (port) { print("\n[placa reiniciando/desconectada]\n"); disconnect(); } });
+    navigator.serial.addEventListener("connect", async (e) => {
+      if (!wantReconnect || port) return;
+      wantReconnect = false;
+      await new Promise(r => setTimeout(r, 600));
+      try { await openPort(e.target); print("[reconectado — clique em “Mostrar menu” se o menu não aparecer]\n"); }
+      catch (err) { print("\n[clique em Conectar de novo]\n"); }
+    });
+  }
 })();
 </script>
 </body>

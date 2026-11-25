@@ -127,7 +127,7 @@ void ui_idle(ui_link_t link) {
     g_clear();
     g_box(0, 9);
     g_text(1, 1, "POKESIGNER", P_PURPLE);
-    g_right(1, "v" "0.3", P_LAV);
+    g_right(1, "v0.3.1", P_LAV);
     snprintf(b, sizeof(b), "ID   %08" PRIX32, s_fp);
     g_text(3, 1, b, P_INK);
     const char *sfx = strchr(s_name, '-');

@@ -17,6 +17,7 @@
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_vfs.h"
 #include "bootloader_random.h"
+#include "soc/usb_serial_jtag_struct.h"
 
 #include "bs_signer.h"
 #include "bs_bip39.h"
@@ -25,7 +26,7 @@
 #include "ui.h"
 #include "display.h"
 
-#define FW_VERSION      "0.3.0"
+#define FW_VERSION      "0.3.1"
 #define APPROVE_HOLD_MS 2000
 #define CONFIRM_TIMEOUT_MS 120000
 #define NVS_NS          "pokesigner"
@@ -35,24 +36,34 @@ void bs_platform_random(uint8_t *buf, size_t len) { esp_fill_random(buf, len); }
 /* ------------------------------------------------------------ serial I/O */
 
 static void console_init(void) {
+    // The host must not be able to reset (or reboot into download mode) a
+    // running signer by toggling DTR/RTS. Firmware updates use BOOT+RESET.
+    USB_SERIAL_JTAG.chip_rst.usb_uart_chip_rst_dis = 1;
     usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     cfg.rx_buffer_size = 1024;
+    cfg.tx_buffer_size = 1024;
     ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&cfg));
-    usb_serial_jtag_vfs_use_driver();
-    usb_serial_jtag_vfs_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
-    setvbuf(stdin, NULL, _IONBF, 0);
+    usb_serial_jtag_vfs_use_driver();   // stdout goes through the driver
     setvbuf(stdout, NULL, _IONBF, 0);
+}
+
+// Reads one byte straight from the driver. Returns -1 on timeout.
+static int con_getc(int timeout_ms) {
+    uint8_t c;
+    TickType_t t = timeout_ms < 0 ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
+    return usb_serial_jtag_read_bytes(&c, 1, t) == 1 ? c : -1;
 }
 
 #define RL_MASK  1   // echo '*'
 #define RL_EMPTY 2   // accept an empty line
-// Reads a line from the console. Returns length.
-static size_t read_line(char *buf, size_t cap, int flags) {
+// Reads a line. timeout_ms applies only while nothing was typed yet
+// (returns -1 then); -1 = wait forever.
+static int read_line_t(char *buf, size_t cap, int flags, int timeout_ms) {
     int masked = flags & RL_MASK;
     size_t n = 0;
     for (;;) {
-        int c = fgetc(stdin);
-        if (c == EOF) { vTaskDelay(pdMS_TO_TICKS(20)); continue; }
+        int c = con_getc(n == 0 ? timeout_ms : -1);
+        if (c < 0) { buf[0] = 0; return -1; }
         if (c == '\r' || c == '\n') {
             if (n == 0 && !(flags & RL_EMPTY)) continue;
             break;
@@ -64,7 +75,12 @@ static size_t read_line(char *buf, size_t cap, int flags) {
     }
     buf[n] = 0;
     putchar('\n');
-    return n;
+    return (int)n;
+}
+
+static size_t read_line(char *buf, size_t cap, int flags) {
+    int n = read_line_t(buf, cap, flags, -1);
+    return n < 0 ? 0 : (size_t)n;
 }
 
 /* ------------------------------------------------------------ storage */
@@ -122,8 +138,7 @@ static void gen_entropy(uint8_t out[32]) {
     printf("Digite caracteres aleatorios para misturar entropia extra (ou ENTER para pular):\n> ");
     char extra[128] = {0};
     int c; size_t n = 0;
-    while ((c = fgetc(stdin)) != '\r' && c != '\n') {
-        if (c == EOF) { vTaskDelay(pdMS_TO_TICKS(20)); continue; }
+    while ((c = con_getc(-1)) != '\r' && c != '\n') {
         if (n < sizeof(extra) - 1) { extra[n++] = (char)c; putchar('*'); }
     }
     putchar('\n');
@@ -143,7 +158,7 @@ static void setup_seed(seed_store_t *s) {
         printf("\n===== PokeSigner: configuracao inicial =====\n"
                "[g] gerar nova seed (24 palavras)\n"
                "[i] importar seed existente\n> ");
-        read_line(line, sizeof(line), RL_EMPTY);  // ENTER reprints the menu
+        if (read_line_t(line, sizeof(line), RL_EMPTY, 5000) < 0) continue;  // reprint menu every 5 s
         if (line[0] == 'g') {
             gen_entropy(s->ent); s->ent_len = 32;
             bs_bip39_from_entropy(s->ent, 32, mn, sizeof(mn));

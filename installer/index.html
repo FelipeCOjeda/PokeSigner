@@ -58,7 +58,7 @@
     <span class="led"></span><span class="lbl px">POWER</span>
     <div class="screen">
       <h1 class="px">POKESIGNER</h1>
-      <p class="sub">Assinador Bitcoin via Bluetooth para a placa <b>Waveshare ESP32-C6-LCD-1.47</b>. Firmware 0.3.0.</p>
+      <p class="sub">Assinador Bitcoin via Bluetooth para a placa <b>Waveshare ESP32-C6-LCD-1.47</b>. Firmware 0.3.1.</p>
     </div>
     <div class="brand px">SIGNER <b>COLOR</b></div>
   </div>
@@ -80,12 +80,12 @@
       <span slot="unsupported">Navegador sem Web Serial — use Chrome ou Edge no computador.</span>
       <span slot="not-allowed">É preciso abrir esta página por HTTPS ou localhost.</span>
     </esp-web-install-button>
-    <p class="muted">Se a porta não aparecer: segure o botão <b>BOOT</b>, aperte e solte <b>RESET</b>, solte <b>BOOT</b> e tente de novo.</p>
+    <p class="muted"><b>Para atualizar uma placa que já tem o PokeSigner</b> (ou se a gravação não começar): segure o botão <b>BOOT</b>, aperte e solte <b>RESET</b>, solte <b>BOOT</b> e clique em Instalar. Por segurança, o firmware não deixa o computador reiniciar a placa sozinho.</p>
   </div>
 
   <div class="card">
     <h2 class="px"><span class="n">&#9654;</span> 2. CONFIGURAR SEED</h2>
-    <p>Depois de gravar, clique em <b>Conectar</b> (só aparece a porta da placa) e depois em <b>Mostrar menu</b>. O menu aparece aqui no terminal.</p>
+    <p>Depois de gravar, clique em <b>Conectar</b> (só aparece a porta da placa). O menu aparece no terminal em até 5 segundos.</p>
     <div class="row">
       <button id="btnConnect">Conectar</button>
       <button id="btnMenu" disabled>Mostrar menu</button>
@@ -225,17 +225,10 @@
     await writer.write(new TextEncoder().encode(text + "\r"));
   }
 
-  async function resetBoard() {
-    if (!port) return;
-    // RTS low pulse resets the ESP32-C6 through its USB-Serial-JTAG (same sequence as esptool)
-    try {
-      wantReconnect = true;
-      await port.setSignals({ dataTerminalReady: false, requestToSend: true });
-      await new Promise(r => setTimeout(r, 120));
-      await port.setSignals({ dataTerminalReady: false, requestToSend: false });
-      term.textContent = "";
-      print("[reiniciando... reconecta sozinho em alguns segundos]\n");
-    } catch (e) { print("\n[não consegui reiniciar: aperte o botão RESET da placa]\n"); }
+  function resetBoard() {
+    // the firmware ignores DTR/RTS resets on purpose (security); ask for the physical button
+    wantReconnect = true;
+    print("\n[aperte o botão RESET da placa — a página reconecta sozinha]\n");
   }
 
   $("btnConnect").onclick = () => (port ? disconnect() : connect());

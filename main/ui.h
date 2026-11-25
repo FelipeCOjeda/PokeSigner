@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include "bs_signer.h"
 
-enum { BTN_TIMEOUT = -1, BTN_SHORT = 0, BTN_LONG = 1, BTN_REMOTE = 2 };
+enum { BTN_TIMEOUT = -1, BTN_SHORT = 0, BTN_LONG = 1, BTN_REMOTE = 2, BTN_REJECT = 3 };
 
 // Remote control from the phone (same codes as the BLE commands 0x04..0x07).
 void ui_remote_event(uint8_t cmd, const uint8_t *payload, size_t len);

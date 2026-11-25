@@ -1,4 +1,4 @@
-// PokeSigner — BLE PSBT signer for ESP32-C6.
+// PokeSigner — BLE PSBT signer for ESP32-C6 / ESP32-C3 boards with a screen.
 // Seed setup and confirmations happen on the device (USB serial + BOOT button);
 // the phone only sends PSBTs and receives signatures over an authenticated
 // BLE link.
@@ -25,8 +25,9 @@
 #include "ble.h"
 #include "ui.h"
 #include "display.h"
+#include "board.h"
 
-#define FW_VERSION      "0.4.0"
+#define FW_VERSION      "0.5.0"
 #define APPROVE_HOLD_MS 2000
 #define CONFIRM_TIMEOUT_MS 120000
 #define NVS_NS          "pokesigner"
@@ -38,7 +39,9 @@ void bs_platform_random(uint8_t *buf, size_t len) { esp_fill_random(buf, len); }
 static void console_init(void) {
     // The host must not be able to reset (or reboot into download mode) a
     // running signer by toggling DTR/RTS. Firmware updates use BOOT+RESET.
-    USB_SERIAL_JTAG.chip_rst.usb_uart_chip_rst_dis = 1;
+#if CONFIG_IDF_TARGET_ESP32C6
+    USB_SERIAL_JTAG.chip_rst.usb_uart_chip_rst_dis = 1;   // (the C3 has no such switch)
+#endif
     usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     cfg.rx_buffer_size = 1024;
     cfg.tx_buffer_size = 1024;
@@ -259,8 +262,8 @@ static void handle_sign(const uint8_t *psbt, size_t len) {
         uint32_t ffp;
         char l1[24], l2[24];
         if (r == BS_ERR_NOTHING_TO_SIGN && bs_psbt_foreign_fp(&ffp)) {
-            snprintf(l1, sizeof(l1), "PSBT:   %08" PRIX32 "  ", ffp);
-            snprintf(l2, sizeof(l2), "SIGNER: %08" PRIX32, bs_signer_fingerprint());
+            snprintf(l1, sizeof(l1), "PSBT %08" PRIX32, ffp);
+            snprintf(l2, sizeof(l2), "SIGN %08" PRIX32, bs_signer_fingerprint());
             ui_msg("OUTRA CARTEIRA!", l1, l2, C_RED);
         } else if (r == BS_ERR_NOTHING_TO_SIGN && bs_psbt_zero_fp()) {
             ui_msg("SEM FINGERPRINT", "Importe a carteira", "pelo PokeSigner.", C_RED);
@@ -375,7 +378,7 @@ void app_main(void) {
     uint8_t orient = orient_load();
     ui_init(orient);
     vTaskDelay(pdMS_TO_TICKS(1500));  // time for the serial monitor to attach
-    printf("\nPokeSigner %s (ESP32-C6)\n", FW_VERSION);
+    printf("\nPokeSigner %s (%s)\n", FW_VERSION, BOARD_NAME);
 
     seed_store_t st;
     memset(&st, 0, sizeof(st));

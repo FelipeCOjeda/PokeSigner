@@ -1,5 +1,29 @@
 menu "PokeSigner"
 
+choice PS_BOARD
+    prompt "Placa"
+    default PS_BOARD_C3_SPOTPEAR_144 if IDF_TARGET_ESP32C3
+    default PS_BOARD_C6_WAVESHARE_147
+
+config PS_BOARD_C6_WAVESHARE_147
+    bool "Waveshare ESP32-C6-LCD-1.47 (ST7789 172x320)"
+    depends on IDF_TARGET_ESP32C6
+
+config PS_BOARD_C3_SPOTPEAR_144
+    bool "Spotpear ESP32-C3 LCD 1.44 (ST7735 128x128)"
+    depends on IDF_TARGET_ESP32C3
+endchoice
+
+config PS_REJECT_GPIO
+    int "GPIO de um botao extra de rejeitar (-1 = nenhum)"
+    default 10 if PS_BOARD_C3_SPOTPEAR_144
+    default -1
+
+config PS_NEXT_GPIO
+    int "GPIO de um botao extra de avancar (-1 = nenhum)"
+    default 8 if PS_BOARD_C3_SPOTPEAR_144
+    default -1
+
 config PS_BUTTON_GPIO
     int "GPIO do botao de confirmacao (BOOT)"
     default 9
@@ -11,21 +35,27 @@ config PS_DISPLAY_ST7789
 if PS_DISPLAY_ST7789
 config PS_LCD_MOSI
     int "LCD MOSI"
+    default 4 if PS_BOARD_C3_SPOTPEAR_144
     default 6
 config PS_LCD_SCLK
     int "LCD SCLK"
+    default 3 if PS_BOARD_C3_SPOTPEAR_144
     default 7
 config PS_LCD_CS
     int "LCD CS"
+    default 2 if PS_BOARD_C3_SPOTPEAR_144
     default 14
 config PS_LCD_DC
     int "LCD DC"
+    default 0 if PS_BOARD_C3_SPOTPEAR_144
     default 15
 config PS_LCD_RST
     int "LCD RST"
+    default 5 if PS_BOARD_C3_SPOTPEAR_144
     default 21
 config PS_LCD_BL
-    int "LCD backlight"
+    int "LCD backlight (-1 = sempre ligado)"
+    default -1 if PS_BOARD_C3_SPOTPEAR_144
     default 22
 config PS_LCD_WIDTH
     int "Largura (px)"
@@ -44,6 +74,7 @@ config PS_LCD_INVERT
     default y
 config PS_LCD_BGR
     bool "Ordem BGR (troque se vermelho e azul estiverem trocados)"
+    default y if PS_BOARD_C3_SPOTPEAR_144
     default n
 config PS_SEED_SERIAL_ECHO
     bool "Tambem mostrar a seed gerada no serial"

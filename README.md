@@ -27,7 +27,20 @@ A mesma pasta pode ser publicada no GitHub Pages para instalar só com um link.
 
 ## Hardware
 
-- Alvo principal: **Waveshare ESP32-C6-LCD-1.47** (ST7789 172×320: MOSI 6, SCLK 7, CS 14, DC 15, RST 21, BL 22).
+Duas placas suportadas (o instalador pergunta qual é a sua):
+
+| Placa | Tela | Botões |
+|---|---|---|
+| **Waveshare ESP32-C6-LCD-1.47** | ST7789 172×320 (MOSI 6, SCLK 7, CS 14, DC 15, RST 21, BL 22), grade 20×10 | BOOT (GPIO9) |
+| **Spotpear ESP32-C3 LCD 1.44** | ST7735S 128×128 (MOSI 4, SCLK 3, CS 2, DC 0, RST 5), grade 16×16 | BOOT (9) e esquerdo (8) avançam/aprovam; direito (10) rejeita |
+
+Compilar para cada uma:
+```bash
+idf.py build                                                     # ESP32-C6 → build/
+idf.py -B build_c3 -D SDKCONFIG=sdkconfig.c3 set-target esp32c3  # 1ª vez
+idf.py -B build_c3 -D SDKCONFIG=sdkconfig.c3 build               # ESP32-C3 → build_c3/
+```
+
 - Outras placas ESP32-C6: desative a tela em `idf.py menuconfig` → *PokeSigner* (aí tudo vai pelo serial).
 - Botão: **BOOT = GPIO9**.
 - Console: **USB nativo (USB-Serial-JTAG)**.
@@ -57,11 +70,11 @@ idf.py build
 idf.py -p /dev/ttyACM0 flash monitor
 ```
 
-Ou gravar o binário pronto (pasta `prebuilt/`):
+Ou gravar a imagem pronta (pasta `installer/firmware/<placa>/`):
 
 ```bash
-python -m esptool --chip esp32c6 -b 460800 write_flash \
-  0x0 bootloader.bin 0x8000 partition-table.bin 0x10000 pokesigner.bin
+python -m esptool --chip esp32c6 write_flash 0x0 installer/firmware/c6/pokesigner-esp32c6.bin
+python -m esptool --chip esp32c3 write_flash 0x0 installer/firmware/c3/pokesigner-esp32c3.bin
 ```
 
 ## Primeiro uso

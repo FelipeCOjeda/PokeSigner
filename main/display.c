@@ -1,8 +1,11 @@
-// ST7789 tile renderer (esp_lcd). Landscape 320x172, 20x10 tiles of 16x16.
+// Tile renderer over esp_lcd SPI. Two panels:
+//  - C6 Waveshare 1.47: ST7789 via the esp_lcd vendor driver, 320x172 landscape, tiles at 2x
+//  - C3 Spotpear 1.44: ST7735S with a small built-in init sequence, 128x128, tiles at 1x
 #include "display.h"
 #if CONFIG_PS_DISPLAY_ST7789
 #include <string.h>
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
@@ -10,10 +13,20 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
 
-#define W 320
-#define H 172
-#define TOP 6          // (172 - 160) / 2
-#define BAND 32
+#if CONFIG_PS_LCD_BGR
+#define BGR_BIT 0x08
+#else
+#define BGR_BIT 0x00
+#endif
+#if CONFIG_PS_LCD_INVERT
+#define INV_CMD 0x21
+#else
+#define INV_CMD 0x20
+#endif
+
+#define W LCD_W
+#define H LCD_H
+#define ROWPX (8 * TSC)            // pixel height of one grid row
 
 extern const uint8_t FONT8X8[95][8];
 
@@ -44,10 +57,16 @@ static const uint8_t TILES[32][8] = {
     [0x13] = {0x28, 0x7C, 0x62, 0x7C, 0x62, 0x62, 0x7C, 0x28},  // bitcoin sign
 };
 
-static esp_lcd_panel_handle_t s_panel;
+static esp_lcd_panel_io_handle_t s_io;
+#if !LCD_ST7735
+static esp_lcd_panel_handle_t s_panel;   // ST7789 only
+#endif
 static SemaphoreHandle_t s_done, s_lock;
-static uint16_t s_band[2][W * BAND];
-static int s_cur;
+static uint16_t s_band[2][W * ROWPX];
+static int s_cur, s_ready;
+#if LCD_ST7735
+static int s_xoff, s_yoff;               // ST7735 RAM offsets for the current orientation
+#endif
 
 static bool on_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t *e, void *ctx) {
     BaseType_t hp = pdFALSE;
@@ -64,100 +83,176 @@ static const uint8_t *glyph(unsigned char c) {
     return FONT8X8[c - 32];
 }
 
+/* ------------------------------------------------------------ panel access */
+
+#if LCD_ST7735
+static void tx(uint8_t cmd, const uint8_t *d, size_t n) { esp_lcd_panel_io_tx_param(s_io, cmd, d, n); }
+
+static void st7735_window(int x0, int y0, int x1, int y1) {   // inclusive
+    uint8_t ca[4] = {0, (uint8_t)(x0 + s_xoff), 0, (uint8_t)(x1 + s_xoff)};
+    uint8_t ra[4] = {0, (uint8_t)(y0 + s_yoff), 0, (uint8_t)(y1 + s_yoff)};
+    tx(0x2A, ca, 4);
+    tx(0x2B, ra, 4);
+}
+#endif
+
 static void push(int y, int h) {
-    xSemaphoreTake(s_done, portMAX_DELAY);
+    xSemaphoreTake(s_done, portMAX_DELAY);  // previous transfer finished
+#if LCD_ST7735
+    st7735_window(0, y, W - 1, y + h - 1);
+    esp_lcd_panel_io_tx_color(s_io, 0x2C, s_band[s_cur], (size_t)W * h * 2);
+#else
     esp_lcd_panel_draw_bitmap(s_panel, 0, y, W, y + h, s_band[s_cur]);
+#endif
     s_cur ^= 1;
 }
 
-// Draws one tile at scale `sc` into the current band at pixel x, row offset oy.
-static void put_tile(uint16_t *b, int x, int oy, int bh, unsigned char c, int sc, uint16_t fg, uint16_t bg, int ysub) {
+/* ------------------------------------------------------------ rendering */
+
+// Draws `rows` pixel rows of a tile (at scale sc) into band b at x, starting at
+// tile pixel row ysub (in scaled pixels).
+static void put_tile(uint16_t *b, int x, unsigned char c, int sc, uint16_t fg, uint16_t bg, int ysub, int rows) {
     const uint8_t *g = glyph(c);
-    for (int py = 0; py < 8 * 2 && oy + py < bh; py++) {      // 16 px per band row
+    for (int py = 0; py < rows; py++) {
         int gy = (py + ysub) / sc;
         uint8_t bits = gy < 8 ? g[gy] : 0;
-        uint16_t *row = b + (oy + py) * W;
-        for (int px = 0; px < 8 * sc && x + px < W; px++) {
-            int gx = px / sc;
-            row[x + px] = (bits & (0x80 >> gx)) ? fg : bg;
-        }
+        uint16_t *row = b + py * W;
+        for (int px = 0; px < 8 * sc && x + px < W; px++)
+            row[x + px] = (bits & (0x80 >> (px / sc))) ? fg : bg;
     }
 }
 
 static void fill_margin(int y, int h) {
-    uint16_t *b = s_band[s_cur], c = sw(PAL[P_LAV]);
-    for (int i = 0; i < W * h; i++) b[i] = c;
-    push(y, h);
+    if (h <= 0) return;
+    while (h > 0) {
+        int n = h > ROWPX ? ROWPX : h;
+        uint16_t *b = s_band[s_cur], c = sw(PAL[P_LAV]);
+        for (int i = 0; i < W * n; i++) b[i] = c;
+        push(y, n);
+        y += n; h -= n;
+    }
 }
 
 void disp_grid(const grid_t *g) {
-    if (!s_panel) return;
+    if (!s_ready) return;
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    fill_margin(0, TOP);
+    fill_margin(0, TOPM);
     for (int r = 0; r < GH; r++) {
-        uint16_t *b = s_band[s_cur];
         int big = g->big[r] && r + 1 < GH;
         for (int sub = 0; sub < (big ? 2 : 1); sub++) {
-            b = s_band[s_cur];
+            uint16_t *b = s_band[s_cur];
             int rr = r + sub;
-            // border / normal cells
             for (int c = 0; c < GW; c++) {
                 if (big && c > 0 && c < GW - 1) continue;
-                put_tile(b, c * 16, 0, 16, (unsigned char)g->ch[rr][c], 2,
-                         sw(PAL[g->fg[rr][c]]), sw(PAL[g->bg[rr][c]]), 0);
+                put_tile(b, c * ROWPX, (unsigned char)g->ch[rr][c], TSC,
+                         sw(PAL[g->fg[rr][c]]), sw(PAL[g->bg[rr][c]]), 0, ROWPX);
             }
             if (big) {
-                // interior: up to 9 chars at 4x, centered in 288 px
+                // interior: text at BIGSC, centered between the two border columns
                 uint16_t bg = sw(PAL[g->bg[r][1]]), fg = sw(PAL[g->fg[r][1]]);
-                for (int i = 0; i < 16 * W; i++) if ((i % W) >= 16 && (i % W) < W - 16) b[i] = bg;
+                int inner = W - 2 * ROWPX, cw = 8 * BIGSC;
+                for (int y = 0; y < ROWPX; y++)
+                    for (int x = ROWPX; x < W - ROWPX; x++) b[y * W + x] = bg;
                 char t[GW + 1]; int n = 0;
                 for (int c = 1; c < GW - 1; c++) t[n++] = g->ch[r][c];
                 while (n && t[n - 1] == ' ') n--;
                 int s = 0; while (s < n && t[s] == ' ') s++;
-                int len = n - s; if (len > 9) len = 9;
-                int x0 = 16 + (288 - len * 32) / 2;
+                int len = n - s; if (len > inner / cw) len = inner / cw;
+                int x0 = ROWPX + (inner - len * cw) / 2;
                 for (int k = 0; k < len; k++)
-                    put_tile(b, x0 + k * 32, 0, 16, (unsigned char)t[s + k], 4, fg, bg, sub * 16);
+                    put_tile(b, x0 + k * cw, (unsigned char)t[s + k], BIGSC, fg, bg, sub * ROWPX, ROWPX);
             }
-            push(TOP + rr * 16, 16);
+            push(TOPM + rr * ROWPX, ROWPX);
         }
         if (big) r++;
     }
-    fill_margin(TOP + GH * 16, H - TOP - GH * 16);
+    fill_margin(TOPM + GH * ROWPX, H - TOPM - GH * ROWPX);
     xSemaphoreTake(s_done, portMAX_DELAY);
     xSemaphoreGive(s_done);
     xSemaphoreGive(s_lock);
 }
 
+/* ------------------------------------------------------------ orientation */
+
 void disp_set_orientation(uint8_t o) {
-    if (!s_panel) return;
-    static const bool MX[4] = {true, false, false, true}, MY[4] = {false, true, false, true};
+    if (!s_ready) return;
     o &= 3;
+#if LCD_ST7735
+    // MADCTL and RAM offsets for a 128x128 window on the 132x162 ST7735S RAM
+    static const uint8_t MAD[4] = {0x00, 0x60, 0xC0, 0xA0};
+    static const int8_t XO[4] = {2, 1, 2, 3}, YO[4] = {1, 2, 3, 2};
+    uint8_t m = MAD[o] | BGR_BIT;
+    xSemaphoreTake(s_done, portMAX_DELAY);
+    tx(0x36, &m, 1);
+    xSemaphoreGive(s_done);
+    s_xoff = XO[o]; s_yoff = YO[o];
+#else
+    static const bool MX[4] = {true, false, false, true}, MY[4] = {false, true, false, true};
     esp_lcd_panel_swap_xy(s_panel, true);
     esp_lcd_panel_mirror(s_panel, MX[o], MY[o]);
     esp_lcd_panel_set_gap(s_panel, CONFIG_PS_LCD_Y_GAP, CONFIG_PS_LCD_X_GAP);
+#endif
 }
+
+/* ------------------------------------------------------------ init */
+
+#if LCD_ST7735
+static void st7735_init(void) {
+    static const uint8_t frm[] = {0x01, 0x2C, 0x2D}, frm3[] = {0x01, 0x2C, 0x2D, 0x01, 0x2C, 0x2D};
+    static const uint8_t gp[] = {0x02, 0x1c, 0x07, 0x12, 0x37, 0x32, 0x29, 0x2d, 0x29, 0x25, 0x2B, 0x39, 0x00, 0x01, 0x03, 0x10};
+    static const uint8_t gn[] = {0x03, 0x1d, 0x07, 0x06, 0x2E, 0x2C, 0x29, 0x2D, 0x2E, 0x2E, 0x37, 0x3F, 0x00, 0x00, 0x02, 0x10};
+    uint8_t v;
+    if (CONFIG_PS_LCD_RST >= 0) {
+        gpio_set_level(CONFIG_PS_LCD_RST, 0); vTaskDelay(pdMS_TO_TICKS(20));
+        gpio_set_level(CONFIG_PS_LCD_RST, 1); vTaskDelay(pdMS_TO_TICKS(120));
+    }
+    tx(0x01, NULL, 0); vTaskDelay(pdMS_TO_TICKS(150));        // SWRESET
+    tx(0x11, NULL, 0); vTaskDelay(pdMS_TO_TICKS(255));        // SLPOUT
+    tx(0xB1, frm, 3); tx(0xB2, frm, 3); tx(0xB3, frm3, 6);    // frame rate
+    v = 0x07; tx(0xB4, &v, 1);                                 // INVCTR
+    tx(0xC0, (const uint8_t[]){0xA2, 0x02, 0x84}, 3);          // power
+    v = 0xC5; tx(0xC1, &v, 1);
+    tx(0xC2, (const uint8_t[]){0x0A, 0x00}, 2);
+    tx(0xC3, (const uint8_t[]){0x8A, 0x2A}, 2);
+    tx(0xC4, (const uint8_t[]){0x8A, 0xEE}, 2);
+    v = 0x0E; tx(0xC5, &v, 1);                                 // VCOM
+    tx(INV_CMD, NULL, 0);                                      // inversion
+    v = 0x05; tx(0x3A, &v, 1);                                 // 16-bit color
+    tx(0xE0, gp, 16); tx(0xE1, gn, 16);                        // gamma
+    tx(0x13, NULL, 0); vTaskDelay(pdMS_TO_TICKS(10));          // NORON
+    tx(0x29, NULL, 0); vTaskDelay(pdMS_TO_TICKS(100));         // DISPON
+}
+#endif
 
 int disp_init(uint8_t orientation) {
     s_done = xSemaphoreCreateBinary();
     s_lock = xSemaphoreCreateMutex();
     xSemaphoreGive(s_done);
-    gpio_config_t bl = {.pin_bit_mask = 1ULL << CONFIG_PS_LCD_BL, .mode = GPIO_MODE_OUTPUT};
-    gpio_config(&bl);
-    gpio_set_level(CONFIG_PS_LCD_BL, 0);
+    if (CONFIG_PS_LCD_BL >= 0) {
+        gpio_config_t bl = {.pin_bit_mask = 1ULL << (CONFIG_PS_LCD_BL & 63), .mode = GPIO_MODE_OUTPUT};
+        gpio_config(&bl);
+        gpio_set_level(CONFIG_PS_LCD_BL, 0);
+    }
     spi_bus_config_t bus = {
         .sclk_io_num = CONFIG_PS_LCD_SCLK, .mosi_io_num = CONFIG_PS_LCD_MOSI,
         .miso_io_num = -1, .quadwp_io_num = -1, .quadhd_io_num = -1,
-        .max_transfer_sz = W * BAND * 2,
+        .max_transfer_sz = W * ROWPX * 2,
     };
     if (spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO) != ESP_OK) return -1;
-    esp_lcd_panel_io_handle_t io;
     esp_lcd_panel_io_spi_config_t ioc = {
         .dc_gpio_num = CONFIG_PS_LCD_DC, .cs_gpio_num = CONFIG_PS_LCD_CS,
-        .pclk_hz = 40 * 1000 * 1000, .lcd_cmd_bits = 8, .lcd_param_bits = 8,
+        .pclk_hz = (LCD_ST7735 ? 27 : 40) * 1000 * 1000, .lcd_cmd_bits = 8, .lcd_param_bits = 8,
         .spi_mode = 0, .trans_queue_depth = 4, .on_color_trans_done = on_done,
     };
-    if (esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST, &ioc, &io) != ESP_OK) return -1;
+    if (esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST, &ioc, &s_io) != ESP_OK) return -1;
+#if LCD_ST7735
+    if (CONFIG_PS_LCD_RST >= 0) {
+        gpio_config_t rst = {.pin_bit_mask = 1ULL << (CONFIG_PS_LCD_RST & 63), .mode = GPIO_MODE_OUTPUT};
+        gpio_config(&rst);
+    }
+    st7735_init();
+    s_ready = 1;
+#else
     esp_lcd_panel_dev_config_t pc = {
         .reset_gpio_num = CONFIG_PS_LCD_RST,
 #if CONFIG_PS_LCD_BGR
@@ -167,15 +262,17 @@ int disp_init(uint8_t orientation) {
 #endif
         .bits_per_pixel = 16,
     };
-    if (esp_lcd_new_panel_st7789(io, &pc, &s_panel) != ESP_OK) return -1;
+    if (esp_lcd_new_panel_st7789(s_io, &pc, &s_panel) != ESP_OK) return -1;
     esp_lcd_panel_reset(s_panel);
     esp_lcd_panel_init(s_panel);
 #if CONFIG_PS_LCD_INVERT
     esp_lcd_panel_invert_color(s_panel, true);
 #endif
-    disp_set_orientation(orientation);
     esp_lcd_panel_disp_on_off(s_panel, true);
-    gpio_set_level(CONFIG_PS_LCD_BL, 1);
+    s_ready = 1;
+#endif
+    disp_set_orientation(orientation);
+    if (CONFIG_PS_LCD_BL >= 0) gpio_set_level(CONFIG_PS_LCD_BL, 1);
     return 0;
 }
 #endif

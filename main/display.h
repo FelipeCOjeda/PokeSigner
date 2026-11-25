@@ -1,12 +1,10 @@
 #pragma once
-// Tile-based display in the spirit of 8-bit handhelds: a 20x10 grid of 8x8
-// tiles drawn at 2x (16x16 px) on the 320x172 landscape panel.
+// Tile-based display in the spirit of 8-bit handhelds: a grid of 8x8 tiles
+// (20x10 at 2x on the C6 320x172 panel, 16x16 at 1x on the C3 128x128 panel).
 #include <stdint.h>
 #include <stddef.h>
 #include "sdkconfig.h"
-
-#define GW 20
-#define GH 10
+#include "board.h"
 
 // palette indices
 enum { P_WHITE, P_LAV, P_PURPLE, P_INK, P_RED, P_GREEN, P_YELLOW, P_BLUE, P_COUNT };

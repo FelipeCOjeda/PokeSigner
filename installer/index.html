@@ -49,6 +49,11 @@
   esp-web-install-button button { font-size: 12px; padding: 14px 22px; }
   #unsupported { display: none; }
   code { background: #ece9fb; padding: 1px 5px; border-radius: 3px; }
+  .boards { display:flex; gap:12px; flex-wrap:wrap; margin: 10px 0 6px; }
+  .board { flex:1 1 220px; display:flex; gap:10px; align-items:flex-start; border:3px solid var(--ink); padding:10px 12px; cursor:pointer; background:#fff; font-size:13px; }
+  .board input { margin-top:4px; accent-color: var(--red); }
+  .board b { font-size:11px; color: var(--pur); }
+  .board:has(input:checked) { background:#ece9fb; box-shadow: 4px 4px 0 var(--ink); }
   .grille { text-align:right; margin-top: 10px; } .grille i { display:inline-block; width:44px; height:6px; background:#c79a00; border-radius:3px; margin:4px 3px; transform: rotate(-30deg); }
 </style>
 </head>
@@ -58,7 +63,7 @@
     <span class="led"></span><span class="lbl px">POWER</span>
     <div class="screen">
       <h1 class="px">POKESIGNER</h1>
-      <p class="sub">Assinador Bitcoin via Bluetooth para a placa <b>Waveshare ESP32-C6-LCD-1.47</b>. Firmware 0.4.0.</p>
+      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.5.0.</p>
     </div>
     <div class="brand px">SIGNER <b>COLOR</b></div>
   </div>
@@ -72,10 +77,17 @@
     <h2 class="px"><span class="n">&#9654;</span> 1. GRAVAR FIRMWARE</h2>
     <ol>
       <li>Ligue a placa no computador pelo cabo USB-C (precisa ser um cabo de <b>dados</b>).</li>
-      <li>Clique em <b>Instalar</b> e escolha a porta <i>“USB JTAG/serial debug unit”</i>.</li>
+      <li>Escolha a sua placa abaixo, clique em <b>Instalar</b> e escolha a porta <i>“USB JTAG/serial debug unit”</i>.</li>
       <li>Aceite apagar a memória. A gravação leva cerca de 1 minuto.</li>
     </ol>
-    <esp-web-install-button manifest="firmware/manifest.json">
+    <div class="boards">
+      <label class="board"><input type="radio" name="board" value="c6" checked>
+        <span><b class="px">ESP32-C6</b><br>Waveshare ESP32-C6-LCD-1.47<br><small>tela 1,47" 172×320 · botão BOOT</small></span></label>
+      <label class="board"><input type="radio" name="board" value="c3">
+        <span><b class="px">ESP32-C3</b><br>Spotpear ESP32-C3 LCD 1.44<br><small>tela 1,44" 128×128 · 3 botões</small></span></label>
+    </div>
+    <p class="muted" id="boardHint"></p>
+    <esp-web-install-button id="installBtn" manifest="firmware/c6/manifest.json">
       <button slot="activate">Instalar PokeSigner</button>
       <span slot="unsupported">Navegador sem Web Serial — use Chrome ou Edge no computador.</span>
       <span slot="not-allowed">É preciso abrir esta página por HTTPS ou localhost.</span>
@@ -137,6 +149,21 @@
   let port = null, reader = null, writer = null, keepReading = false;
 
   if (!("serial" in navigator)) $("unsupported").style.display = "block";
+
+  const HINTS = {
+    c6: "ESP32-C6: aprovar = segurar BOOT 2 s (ou o código no celular).",
+    c3: "ESP32-C3: botão do meio (BOOT) e o da esquerda avançam / seguram 2 s para aprovar; o da direita rejeita. O código no celular também aprova."
+  };
+  function setBoard(b) {
+    $("installBtn").setAttribute("manifest", "firmware/" + b + "/manifest.json");
+    $("boardHint").textContent = HINTS[b];
+    try { localStorage.setItem("ps_board", b); } catch (_) {}
+  }
+  document.querySelectorAll('input[name=board]').forEach(r => r.addEventListener("change", () => setBoard(r.value)));
+  let saved = "c6"; try { saved = localStorage.getItem("ps_board") || "c6"; } catch (_) {}
+  const radio = document.querySelector('input[name=board][value="' + saved + '"]');
+  if (radio) radio.checked = true;
+  setBoard(saved);
 
   const MAX = 200000;
   function print(text) {

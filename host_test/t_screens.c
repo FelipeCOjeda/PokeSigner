@@ -2,11 +2,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
-uint16_t FB[172][320];
+#include "board.h"
+uint16_t FB[LCD_H][LCD_W];
 #include "../main/display.c"
 static int g_shot;
-static void save(void){char fn[64];snprintf(fn,sizeof fn,"shot_%02d.ppm",g_shot++);FILE*f=fopen(fn,"wb");fprintf(f,"P6 320 172 255\n");
-  for(int y=0;y<172;y++)for(int x=0;x<320;x++){uint16_t c=FB[y][x];unsigned char rgb[3]={(c>>11)<<3,((c>>5)&63)<<2,(c&31)<<3};fwrite(rgb,1,3,f);}fclose(f);}
+static void save(void){char fn[64];snprintf(fn,sizeof fn,"shot_%02d.ppm",g_shot++);FILE*f=fopen(fn,"wb");fprintf(f,"P6 %d %d 255\n",LCD_W,LCD_H);
+  for(int y=0;y<LCD_H;y++)for(int x=0;x<LCD_W;x++){uint16_t c=FB[y][x];unsigned char rgb[3]={(c>>11)<<3,((c>>5)&63)<<2,(c&31)<<3};fwrite(rgb,1,3,f);}fclose(f);}
 #include "../main/ui.c"
 #include "bs_signer.h"
 #include "bs_bip39.h"

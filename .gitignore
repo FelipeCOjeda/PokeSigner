@@ -9,3 +9,8 @@ host_test/t_screens
 host_test/*.psbt
 host_test/*.ppm
 __pycache__/
+build_c3/
+sdkconfig.c3
+sdkconfig.c3.old
+host_test/t_screens*
+!host_test/t_screens.c

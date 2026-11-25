@@ -1,7 +1,7 @@
 POKESIGNER - INSTALADOR PLUG AND PLAY
 =====================================
 
-Placa: Waveshare ESP32-C6-LCD-1.47
+Placas: Waveshare ESP32-C6-LCD-1.47 ou Spotpear ESP32-C3 LCD 1.44 (escolha na pagina)
 Navegador: Google Chrome ou Microsoft Edge (no computador)
 
 COMO USAR
@@ -25,4 +25,4 @@ SE A PORTA NAO APARECER
 Segure BOOT, aperte e solte RESET, solte BOOT e tente de novo.
 Linux: sudo usermod -aG dialout $USER  (depois logout/login)
 
-Firmware: firmware/pokesigner-esp32c6.bin (imagem unica, offset 0x0)
+Firmware: firmware/c6/pokesigner-esp32c6.bin e firmware/c3/pokesigner-esp32c3.bin (imagem unica, offset 0x0)

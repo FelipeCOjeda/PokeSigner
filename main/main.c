@@ -25,7 +25,7 @@
 #include "ui.h"
 #include "display.h"
 
-#define FW_VERSION      "0.2.0"
+#define FW_VERSION      "0.3.0"
 #define APPROVE_HOLD_MS 2000
 #define CONFIRM_TIMEOUT_MS 120000
 #define NVS_NS          "pokesigner"
@@ -92,6 +92,17 @@ static int seed_save(const seed_store_t *s) {
     if (e == ESP_OK) e = nvs_commit(h);
     nvs_close(h);
     return e == ESP_OK ? 0 : -1;
+}
+
+static uint8_t orient_load(void) {
+    nvs_handle_t h; uint8_t o = 0;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) { nvs_get_u8(h, "orient", &o); nvs_close(h); }
+    return o & 3;
+}
+
+static void orient_save(uint8_t o) {
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) { nvs_set_u8(h, "orient", o); nvs_commit(h); nvs_close(h); }
 }
 
 static void seed_erase(void) {
@@ -281,10 +292,17 @@ static void worker_task(void *arg) {
 static void console_task(void *arg) {
     char line[64];
     for (;;) {
-        printf("\nComandos: info | unpair | wipe\n> ");
+        printf("\nComandos: info | girar | unpair | wipe\n> ");
         read_line(line, sizeof(line), RL_EMPTY);
         if (!strcmp(line, "info")) {
             if (bs_signer_get_info(0, 0, s_text, sizeof(s_text)) == 0) printf("%s\n", s_text);
+        } else if (!strcmp(line, "girar")) {
+            static uint8_t o = 0xff;
+            if (o == 0xff) o = orient_load();
+            o = (o + 1) & 3;
+            orient_save(o);
+            ui_rotate(o);
+            printf("Orientacao %u salva. Repita 'girar' ate o texto ficar certo.\n", o);
         } else if (!strcmp(line, "unpair")) {
             ble_forget_bonds();
             printf("Pareamentos BLE apagados.\n");
@@ -313,17 +331,18 @@ void app_main(void) {
     }
     ESP_ERROR_CHECK(e);
     console_init();
-    ui_init();
+    uint8_t orient = orient_load();
+    ui_init(orient);
     vTaskDelay(pdMS_TO_TICKS(1500));  // time for the serial monitor to attach
     printf("\nPokeSigner %s (ESP32-C6)\n", FW_VERSION);
 
     seed_store_t st;
     memset(&st, 0, sizeof(st));
     if (seed_load(&st)) {
-        ui_msg("CONFIGURAR", "Conecte no USB e", "abra o monitor serial", C_YELLOW);
+        ui_msg("CONFIGURAR", "Abra o instalador no", "computador e clique em Conectar.", C_YELLOW);
         setup_seed(&st);
     }
-    ui_msg("Iniciando", "derivando chaves...", NULL, C_WHITE);
+    ui_msg("CARREGANDO", "Derivando as chaves...", NULL, C_WHITE);
 
     char mn[400];
     uint8_t seed[64];

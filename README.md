@@ -35,6 +35,10 @@ A mesma pasta pode ser publicada no GitHub Pages para instalar só com um link.
 
 ## Uso na tela
 
+Visual inspirado nos portáteis 8-bit: tela na horizontal, grade de 20×10 blocos, fonte pixel
+(Press Start 2P, OFL) e caixas de diálogo. Se a imagem ficar invertida, use `girar` no terminal do instalador.
+
+
 | Tela | Botão BOOT |
 |---|---|
 | Revisão (resumo → cada destino → troco → confirmar) | toque = próxima página |

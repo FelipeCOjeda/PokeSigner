@@ -4,7 +4,15 @@
 
 enum { BTN_TIMEOUT = -1, BTN_SHORT = 0, BTN_LONG = 1 };
 
-void ui_init(void);
+// message colors for ui_msg
+#define C_WHITE  0
+#define C_GREEN  1
+#define C_RED    2
+#define C_YELLOW 3
+#define C_ORANGE 4
+
+void ui_init(uint8_t orientation);
+void ui_rotate(uint8_t orientation);
 int  ui_has_display(void);
 
 // Waits for a press. BTN_LONG if held >= hold_ms. abort_cb may be NULL.

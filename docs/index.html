@@ -152,7 +152,7 @@
 
   const HINTS = {
     c6: "ESP32-C6: aprovar = segurar BOOT 2 s (ou o código no celular).",
-    c3: "ESP32-C3: botão do meio (BOOT) e o da esquerda avançam / seguram 2 s para aprovar; o da direita rejeita. O código no celular também aprova."
+    c3: "ESP32-C3: dois botões (BOOT/GPIO9 e GPIO8) avançam e, segurados 2 s na última tela, aprovam; o terceiro (GPIO10) rejeita. O código no celular também aprova."
   };
   function setBoard(b) {
     $("installBtn").setAttribute("manifest", "firmware/" + b + "/manifest.json");

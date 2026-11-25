@@ -32,7 +32,7 @@ Duas placas suportadas (o instalador pergunta qual é a sua):
 | Placa | Tela | Botões |
 |---|---|---|
 | **Waveshare ESP32-C6-LCD-1.47** | ST7789 172×320 (MOSI 6, SCLK 7, CS 14, DC 15, RST 21, BL 22), grade 20×10 | BOOT (GPIO9) |
-| **Spotpear ESP32-C3 LCD 1.44** | ST7735S 128×128 (MOSI 4, SCLK 3, CS 2, DC 0, RST 5), grade 16×16 | BOOT (9) e esquerdo (8) avançam/aprovam; direito (10) rejeita |
+| **Spotpear ESP32-C3 LCD 1.44** | ST7735S 128×128 (MOSI 4, SCLK 3, CS 2, DC 0, RST 5), grade 16×16 | BOOT (GPIO9) e GPIO8 avançam/aprovam; GPIO10 rejeita |
 
 Compilar para cada uma:
 ```bash

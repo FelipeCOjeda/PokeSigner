@@ -195,6 +195,12 @@ static void advertise(void) {
     struct ble_hs_adv_fields f = {0}, rsp = {0};
     f.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
     f.uuids128 = (ble_uuid128_t *)&SVC_UUID; f.num_uuids128 = 1; f.uuids128_is_complete = 1;
+    // short name in the advertisement itself (fits in 31 bytes), full name in the scan response,
+    // so the device shows up even in scanners that only listen passively
+    static char shortname[12];
+    const char *sfx = strchr(s_name, '-');
+    snprintf(shortname, sizeof(shortname), "PS-%s", sfx ? sfx + 1 : "");
+    f.name = (uint8_t *)shortname; f.name_len = strlen(shortname); f.name_is_complete = 0;
     rsp.name = (uint8_t *)s_name; rsp.name_len = strlen(s_name); rsp.name_is_complete = 1;
     ble_gap_adv_set_fields(&f);
     ble_gap_adv_rsp_set_fields(&rsp);

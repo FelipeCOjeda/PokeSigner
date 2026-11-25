@@ -26,7 +26,7 @@
 #include "ui.h"
 #include "display.h"
 
-#define FW_VERSION      "0.3.1"
+#define FW_VERSION      "0.3.2"
 #define APPROVE_HOLD_MS 2000
 #define CONFIRM_TIMEOUT_MS 120000
 #define NVS_NS          "pokesigner"

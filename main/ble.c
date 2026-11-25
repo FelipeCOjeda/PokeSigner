@@ -82,12 +82,19 @@ static void rx_feed(const uint8_t *d, size_t n) {
             memcpy(s_hdr + s_hdr_len, d, k); s_hdr_len += k; d += k; n -= k;
             if (s_hdr_len < 5) return;
             s_rx_expect = s_hdr[1] | s_hdr[2] << 8 | s_hdr[3] << 16 | (uint32_t)s_hdr[4] << 24;
-            if (s_rx_expect > PROTO_MAX_PAYLOAD) { rx_reset(); send_error_now("payload grande demais"); return; }
+            printf("[BLE] quadro: cmd=0x%02x tamanho=%u\n", s_hdr[0], (unsigned)s_rx_expect);
+            if (s_rx_expect > PROTO_MAX_PAYLOAD) {
+                printf("[BLE] ERRO: tamanho invalido. Primeiros bytes: %02x %02x %02x %02x %02x "
+                       "(o app deve mandar [cmd][len 4 bytes LE][PSBT binario], nao base64/texto)\n",
+                       s_hdr[0], s_hdr[1], s_hdr[2], s_hdr[3], s_hdr[4]);
+                rx_reset(); send_error_now("quadro invalido: use [cmd][len LE][payload binario]"); return;
+            }
             s_rx_len = 0;
         }
         size_t k = s_rx_expect - s_rx_len < n ? s_rx_expect - s_rx_len : n;
         memcpy(s_rx + s_rx_len, d, k); s_rx_len += k; d += k; n -= k;
         if (s_rx_len == s_rx_expect) {
+            printf("[BLE] quadro completo (%u bytes)\n", (unsigned)s_rx_len);
             s_busy = 1;
             s_cb(s_hdr[0], s_rx, s_rx_len);
             return;  // extra bytes after a complete frame are dropped
@@ -99,7 +106,7 @@ static int chr_access(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt 
     if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
         uint8_t tmp[520];
         uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
-        if (len > sizeof(tmp)) return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        if (len > sizeof(tmp)) { printf("[BLE] escrita grande demais (%u)\n", len); return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN; }
         if (ble_hs_mbuf_to_flat(ctxt->om, tmp, sizeof(tmp), &len)) return BLE_ATT_ERR_UNLIKELY;
         rx_feed(tmp, len);
         return 0;

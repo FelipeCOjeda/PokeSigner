@@ -243,6 +243,12 @@ static void phone_status(const char *m) { ble_send(RSP_STATUS, (const uint8_t *)
 static void reply_err(const char *msg) { ble_send(RSP_ERROR, (const uint8_t *)msg, strlen(msg)); }
 
 static void handle_sign(const uint8_t *psbt, size_t len) {
+    printf("[PSBT] recebido %u bytes, analisando...\n", (unsigned)len);
+    if (len >= 5 && memcmp(psbt, "cHNi", 4) == 0) {
+        printf("[PSBT] veio em base64: o app deve mandar os bytes binarios\n");
+        reply_err("PSBT veio em base64; envie os bytes binarios (decode antes)");
+        return;
+    }
     int r = bs_psbt_analyze(psbt, len, &s_psbt);
     if (r) {
         char why[200];

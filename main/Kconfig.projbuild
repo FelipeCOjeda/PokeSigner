@@ -1,0 +1,53 @@
+menu "PokeSigner"
+
+config PS_BUTTON_GPIO
+    int "GPIO do botao de confirmacao (BOOT)"
+    default 9
+
+config PS_DISPLAY_ST7789
+    bool "Usar display ST7789 (Waveshare ESP32-C6-LCD-1.47)"
+    default y
+
+if PS_DISPLAY_ST7789
+config PS_LCD_MOSI
+    int "LCD MOSI"
+    default 6
+config PS_LCD_SCLK
+    int "LCD SCLK"
+    default 7
+config PS_LCD_CS
+    int "LCD CS"
+    default 14
+config PS_LCD_DC
+    int "LCD DC"
+    default 15
+config PS_LCD_RST
+    int "LCD RST"
+    default 21
+config PS_LCD_BL
+    int "LCD backlight"
+    default 22
+config PS_LCD_WIDTH
+    int "Largura (px)"
+    default 172
+config PS_LCD_HEIGHT
+    int "Altura (px)"
+    default 320
+config PS_LCD_X_GAP
+    int "Offset X do controlador"
+    default 34
+config PS_LCD_Y_GAP
+    int "Offset Y do controlador"
+    default 0
+config PS_LCD_INVERT
+    bool "Inverter cores (paineis IPS)"
+    default y
+config PS_LCD_BGR
+    bool "Ordem BGR (troque se vermelho e azul estiverem trocados)"
+    default n
+config PS_SEED_SERIAL_ECHO
+    bool "Tambem mostrar a seed gerada no serial"
+    default n
+endif
+
+endmenu

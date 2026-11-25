@@ -5,6 +5,10 @@ O celular (PokeWallet) envia o PSBT por BLE; o dispositivo mostra os detalhes
 **na tela** (Waveshare ESP32-C6-LCD-1.47) e só assina após você revisar todas as
 páginas e **segurar o botão BOOT por 2 s**.
 
+## Para desenvolvedores de carteiras
+
+Quer suportar o Signy na sua carteira? O protocolo completo, aberto e com exemplos (Web Bluetooth, Android, iOS, Python), está em **[SIGNY-PROTOCOL.md](SIGNY-PROTOCOL.md)**.
+
 ## Instalação plug-and-play
 
 Pasta `installer/`: clique duas vezes em `Instalar-Windows.bat`, `Instalar-Mac.command`

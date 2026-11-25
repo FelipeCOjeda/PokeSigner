@@ -27,7 +27,7 @@
 #include "display.h"
 #include "board.h"
 
-#define FW_VERSION      "0.5.0"
+#define FW_VERSION      "0.6.0"
 #define APPROVE_HOLD_MS 2000
 #define CONFIRM_TIMEOUT_MS 120000
 #define NVS_NS          "pokesigner"
@@ -294,8 +294,8 @@ static void handle_sign(const uint8_t *psbt, size_t len) {
     if (r) { printf("[PSBT] erro ao assinar: %s\n", bs_strerror(r)); reply_err(bs_strerror(r)); ui_refresh_idle(); return; }
     printf("[PSBT] assinado (%u entradas), enviando %u bytes\n", (unsigned)s_psbt.n_sign, (unsigned)olen);
     int sent = ble_send(RSP_SIGNED, s_out, olen);
-    ui_msg(sent == 0 ? "ENVIADO" : "FALHA BLE", sent == 0 ? "PSBT assinado" : "reconecte e tente", sent == 0 ? "devolvido ao celular" : "novamente", sent == 0 ? C_GREEN : C_RED);
-    vTaskDelay(pdMS_TO_TICKS(1500));
+    if (sent == 0) ui_celebrate("Enviado ao celular.", NULL);
+    else { ui_msg("FALHA BLE", "reconecte e tente", "novamente", C_RED); vTaskDelay(pdMS_TO_TICKS(1500)); }
     ui_refresh_idle();
 }
 

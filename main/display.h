@@ -30,7 +30,12 @@ typedef struct {
     uint8_t big[GH];    // 1 = render this row's interior at 4x, spanning 2 rows
 } grid_t;
 
+// Draws a 16x16 sprite (rows of palette letters, '.' = background) at pixel x,y with
+// integer scale, inside a box of w x h pixels that is first filled with the background.
+// sparkle != 0 adds little stars around it (alternating sets for odd/even values).
 #if CONFIG_PS_DISPLAY_ST7789
+void disp_sprite(const char *const rows[16], int box_x, int box_y, int box_w, int box_h,
+                 int dx, int dy, int scale, int sparkle, int bg_pal);
 int  disp_init(uint8_t orientation);
 void disp_grid(const grid_t *g);
 void disp_set_orientation(uint8_t o);   // 0..3, landscape variants
@@ -38,4 +43,6 @@ void disp_set_orientation(uint8_t o);   // 0..3, landscape variants
 static inline int  disp_init(uint8_t o) { (void)o; return -1; }
 static inline void disp_grid(const grid_t *g) { (void)g; }
 static inline void disp_set_orientation(uint8_t o) { (void)o; }
+static inline void disp_sprite(const char *const r[16], int a, int b, int c, int d, int e, int f, int g, int h, int i)
+{ (void)r; (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; (void)h; (void)i; }
 #endif

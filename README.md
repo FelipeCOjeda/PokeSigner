@@ -46,6 +46,12 @@ idf.py -B build_c3 -D SDKCONFIG=sdkconfig.c3 build               # ESP32-C3 → 
 - Console: **USB nativo (USB-Serial-JTAG)**.
 - Se as cores ou a posição da imagem vierem erradas: `menuconfig` → *PokeSigner* → inverter cores / ordem BGR / offset X.
 
+## Mascote
+
+**Signy**, um robozinho portátil em pixel art (original), aparece ao ligar, fica na tela de espera piscando e comemora pulando quando um PSBT é assinado.
+
+![Signy](installer/assets/signy-c6.gif)
+
 ## Uso na tela
 
 Visual inspirado nos portáteis 8-bit: tela na horizontal, grade de 20×10 blocos, fonte pixel

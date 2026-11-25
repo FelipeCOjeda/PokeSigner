@@ -29,7 +29,8 @@ void ui_idle(ui_link_t link);
 void ui_refresh_idle(void);     // redraws idle screen unless a modal screen is up
 void ui_passkey(uint32_t code);
 void ui_msg(const char *title, const char *l1, const char *l2, uint16_t color);
-void ui_seed_words(const char *mnemonic);   // pages through the words with BOOT
+void ui_seed_words(const char *mnemonic);
+void ui_celebrate(const char *l1, const char *l2);   // mascot animation after signing   // pages through the words with BOOT
 
 // Paged review. 1 = approved, 0 = rejected, -1 = timeout/abort.
 int  ui_review(const bs_psbt_t *p, int timeout_ms, int (*abort_cb)(void));

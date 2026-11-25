@@ -12,6 +12,7 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
+#include <stdlib.h>
 
 #if CONFIG_PS_LCD_BGR
 #define BGR_BIT 0x08
@@ -170,6 +171,77 @@ void disp_grid(const grid_t *g) {
     xSemaphoreTake(s_done, portMAX_DELAY);
     xSemaphoreGive(s_done);
     xSemaphoreGive(s_lock);
+}
+
+/* ------------------------------------------------------------ sprites */
+
+static uint16_t sprite_color(char c) {
+    switch (c) {
+    case 'K': return 0x2108;   // outline (ink)
+    case 'O': return 0xF4A3;   // bitcoin orange F7931A
+    case 'L': return 0xFE0E;   // highlight FFC070
+    case 'W': return 0xFFFF;   // eye white
+    case 'Y': return 0xFE40;   // spark yellow
+    case 'R': return 0xDA06;   // red D84030
+    case 'S': return 0xCE59;   // silver C8C8D0
+    case 'D': return 0x630E;   // dark grey 606070
+    case 'T': return 0x8E98;   // screen teal 8BD3C7
+    default:  return PAL[P_LAV];
+    }
+}
+
+void disp_sprite(const char *const rows[16], int bx, int by, int bw, int bh,
+                 int dx, int dy, int sc, int sparkle, int bg_pal) {
+    if (!s_ready || bw <= 0 || bh <= 0) return;
+    uint16_t *buf = malloc((size_t)bw * bh * 2);
+    if (!buf) return;
+    uint16_t bg = sw(PAL[bg_pal]);
+    for (int i = 0; i < bw * bh; i++) buf[i] = bg;
+    if (bg_pal == P_LAV) {   // same dotted pattern as the background tiles, aligned to the grid
+        uint16_t dot = sw(PAL[P_PURPLE]);
+        for (int y = 0; y < bh; y++)
+            for (int x = 0; x < bw; x++) {
+                int ty = ((by + y - TOPM) / TSC) & 7, tx = ((bx + x) / TSC) & 7;
+                if (TILES[0x12][ty] & (0x80 >> tx)) buf[y * bw + x] = dot;
+            }
+    }
+    for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++) {
+            char c = rows[y][x];
+            if (c == '.') continue;
+            uint16_t col = sw(sprite_color(c));
+            for (int yy = 0; yy < sc; yy++)
+                for (int xx = 0; xx < sc; xx++) {
+                    int px = dx + x * sc + xx, py = dy + y * sc + yy;
+                    if (px >= 0 && px < bw && py >= 0 && py < bh) buf[py * bw + px] = col;
+                }
+        }
+    if (sparkle) {   // little stars around the sprite
+        static const int8_t S[6][2] = {{-3, 2}, {18, 3}, {-2, 12}, {19, 11}, {2, -2}, {14, -1}};
+        uint16_t y1 = sw(sprite_color('Y'));
+        for (int k = 0; k < 6; k++) {
+            if ((k + sparkle) % 2) continue;
+            int cx = dx + S[k][0] * sc, cy = dy + S[k][1] * sc;
+            for (int d = -sc; d <= sc; d++) {
+                int pts[2][2] = {{cx + d, cy}, {cx, cy + d}};
+                for (int q = 0; q < 2; q++)
+                    if (pts[q][0] >= 0 && pts[q][0] < bw && pts[q][1] >= 0 && pts[q][1] < bh)
+                        buf[pts[q][1] * bw + pts[q][0]] = y1;
+            }
+        }
+    }
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    xSemaphoreTake(s_done, portMAX_DELAY);
+#if LCD_ST7735
+    st7735_window(bx, by, bx + bw - 1, by + bh - 1);
+    esp_lcd_panel_io_tx_color(s_io, 0x2C, buf, (size_t)bw * bh * 2);
+#else
+    esp_lcd_panel_draw_bitmap(s_panel, bx, by, bx + bw, by + bh, buf);
+#endif
+    xSemaphoreTake(s_done, portMAX_DELAY);   // wait for the DMA before freeing
+    xSemaphoreGive(s_done);
+    xSemaphoreGive(s_lock);
+    free(buf);
 }
 
 /* ------------------------------------------------------------ orientation */

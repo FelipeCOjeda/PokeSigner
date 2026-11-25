@@ -49,6 +49,8 @@
   esp-web-install-button button { font-size: 12px; padding: 14px 22px; }
   #unsupported { display: none; }
   code { background: #ece9fb; padding: 1px 5px; border-radius: 3px; }
+  .demo { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-top:12px; }
+  .demo img { image-rendering: pixelated; border:3px solid var(--ink); max-width:100%; height:auto; }
   .boards { display:flex; gap:12px; flex-wrap:wrap; margin: 10px 0 6px; }
   .board { flex:1 1 220px; display:flex; gap:10px; align-items:flex-start; border:3px solid var(--ink); padding:10px 12px; cursor:pointer; background:#fff; font-size:13px; }
   .board input { margin-top:4px; accent-color: var(--red); }
@@ -63,7 +65,8 @@
     <span class="led"></span><span class="lbl px">POWER</span>
     <div class="screen">
       <h1 class="px">POKESIGNER</h1>
-      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.5.0.</p>
+      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.6.0.</p>
+      <div class="demo"><img src="assets/signy-c6.gif" alt="Signy, o mascote do PokeSigner, comemorando uma assinatura" width="320"><img src="assets/signy-c3.gif" alt="PokeSigner na tela da ESP32-C3" width="192"></div>
     </div>
     <div class="brand px">SIGNER <b>COLOR</b></div>
   </div>

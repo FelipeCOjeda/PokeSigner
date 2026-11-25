@@ -15,6 +15,8 @@
 #include "esp_timer.h"
 #include "esp_random.h"
 #include "ble.h"
+#include "freertos/semphr.h"
+#include "mascot.h"
 
 #define BTN     CONFIG_PS_BUTTON_GPIO
 #define BTN_REJ CONFIG_PS_REJECT_GPIO
@@ -26,6 +28,10 @@ static uint32_t s_fp;
 static ui_link_t s_link = UI_ADV;
 static volatile int s_modal;
 static grid_t G;
+static SemaphoreHandle_t s_ui;          // serializes whole-screen drawing
+static volatile int s_idle_visible;     // idle screen (with mascot) is on screen
+#define UI_LOCK()   do { if (s_ui) xSemaphoreTake(s_ui, portMAX_DELAY); } while (0)
+#define UI_UNLOCK() do { if (s_ui) xSemaphoreGive(s_ui); } while (0)
 
 typedef struct { uint8_t cmd; char code[8]; } remote_ev_t;
 static QueueHandle_t s_remote;
@@ -213,6 +219,7 @@ static void draw_box(const box_t *b, int r0, int r1) {
 // Stacks the boxes top to bottom; the last one (or one with fill/footer) stretches to the
 // bottom. If the page is too tall, blank lines are dropped first.
 static void lay_render(void) {
+    s_idle_visible = 0;
     g_clear();
     int need = 0;
     for (int i = 0; i < s_nbox; i++) need += 2 + box_inner(&s_boxes[i]);
@@ -236,16 +243,45 @@ static void lay_render(void) {
 
 /* ------------------------------------------------------------ screens */
 
+static void idle_sprite(const char *const *f) {
+    disp_sprite(f, IDLE_SPR_X, IDLE_SPR_Y, 16 * IDLE_SPR_SC, 16 * IDLE_SPR_SC, 0, 0, IDLE_SPR_SC, 0, P_WHITE);
+}
+
+// Blinks the idle mascot every few seconds.
+static void blink_task(void *arg) {
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(3000 + (esp_random() % 3000)));
+        if (!s_disp || s_modal || !s_idle_visible) continue;
+        UI_LOCK();
+        if (s_idle_visible) idle_sprite(SIGNY_BLINK);
+        UI_UNLOCK();
+        vTaskDelay(pdMS_TO_TICKS(140));
+        UI_LOCK();
+        if (s_idle_visible) idle_sprite(SIGNY_OPEN);
+        UI_UNLOCK();
+    }
+}
+
 void ui_init(uint8_t orientation) {
     gpio_config_t io = {.mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE};
     io.pin_bit_mask = gpio_bit(BTN) | gpio_bit(BTN_REJ) | gpio_bit(BTN_NXT);
     gpio_config(&io);
+    s_ui = xSemaphoreCreateMutex();
     s_disp = disp_init(orientation) == 0;
     s_remote = xQueueCreate(4, sizeof(remote_ev_t));
     lay_begin();
     box_t *b = lay_box(); b->fill = 1;
-    L_blank(b); L_center(b, P_PURPLE, "POKESIGNER"); L_center(b, P_INK, "iniciando...");
+    L_center(b, P_PURPLE, "POKESIGNER"); L_center(b, P_INK, "iniciando...");
     lay_render();
+    if (s_disp) {
+        int w = 16 * SPLASH_SC, x = (LCD_W - w) / 2;
+        disp_sprite(SIGNY_OPEN, x, SPLASH_Y, w, w, 0, 0, SPLASH_SC, 0, P_WHITE);
+        vTaskDelay(pdMS_TO_TICKS(500));
+        disp_sprite(SIGNY_BLINK, x, SPLASH_Y, w, w, 0, 0, SPLASH_SC, 0, P_WHITE);
+        vTaskDelay(pdMS_TO_TICKS(150));
+        disp_sprite(SIGNY_HAPPY, x, SPLASH_Y, w, w, 0, 0, SPLASH_SC, 0, P_WHITE);
+        xTaskCreate(blink_task, "blink", 3072, NULL, 2, NULL);
+    }
 }
 
 int ui_has_display(void) { return s_disp; }
@@ -262,10 +298,11 @@ void ui_set_identity(const char *name, uint32_t fp) {
 void ui_idle(ui_link_t link) {
     s_link = link;
     if (!s_disp || s_modal) return;
+    UI_LOCK();
     char b1[24], b2[24];
     lay_begin();
     box_t *b = lay_box(); b->fill = 1;
-    L_pair(b, P_PURPLE, "POKESIGNER", P_LAV, TW >= 16 ? "v0.5" : "");
+    L_pair(b, P_PURPLE, "POKESIGNER", P_LAV, TW >= 16 ? "v0.6" : "");
     L_blank(b);
     snprintf(b1, sizeof(b1), "ID  %08" PRIX32, s_fp);
     L_text(b, P_INK, b1);
@@ -279,6 +316,9 @@ void ui_idle(ui_link_t link) {
     L_blank(b);
     L_text(b, P_PURPLE, "Envie um PSBT");
     lay_render();
+    idle_sprite(SIGNY_OPEN);
+    s_idle_visible = 1;
+    UI_UNLOCK();
 }
 
 void ui_refresh_idle(void) { ui_idle(s_link); }
@@ -287,6 +327,7 @@ void ui_passkey(uint32_t code) {
     if (!s_disp) return;
     char c[8];
     snprintf(c, sizeof(c), "%06" PRIu32, code);
+    UI_LOCK();
     lay_begin();
     box_t *b = lay_box(); b->fill = 1;
     L_text(b, P_PURPLE, "PAREAMENTO");
@@ -295,12 +336,21 @@ void ui_passkey(uint32_t code) {
     L_blank(b);
     L_text(b, P_LAV, "Nao pediu? Ignore.");
     lay_render();
+    UI_UNLOCK();
 }
+
+static int msg_draw(const char *title, const char *l1, const char *l2, uint16_t color);
 
 // Dialog box anchored at the bottom of the screen (classic RPG text box).
 void ui_msg(const char *title, const char *l1, const char *l2, uint16_t color) {
-    if (!s_disp) return;
+    if (s_disp) msg_draw(title, l1, l2, color);
+}
+
+// Draws the dialog box; returns its top grid row.
+static int msg_draw(const char *title, const char *l1, const char *l2, uint16_t color) {
     int pal = color == C_RED ? P_RED : color == C_GREEN ? P_GREEN : color == C_ORANGE ? P_RED : P_PURPLE;
+    UI_LOCK();
+    s_idle_visible = 0;
     lay_begin();
     box_t *b = lay_box();
     L_text(b, pal, title);
@@ -311,6 +361,38 @@ void ui_msg(const char *title, const char *l1, const char *l2, uint16_t color) {
     if (h > GH) h = GH;
     draw_box(b, GH - h, GH - 1);
     g_show();
+    UI_UNLOCK();
+    return GH - h;
+}
+
+// Celebration after a successful signature: mascot blinks, jumps and sparkles above a dialog box.
+void ui_celebrate(const char *l1, const char *l2) {
+    if (!s_disp) return;
+    s_modal = 1;   // keep BLE status changes from redrawing the idle screen mid-animation
+    int top = msg_draw("PSBT ASSINADO!", l1, l2, C_GREEN);
+    // fit mascot + jump + sparkle margin above the dialog box
+    int avail = top * 8 * TSC - 4, sc = CELEB_SC, sw, jump, pad;
+    for (;;) {
+        sw = 16 * sc; jump = 3 * sc; pad = 3 * sc;
+        if (sw + jump + pad <= avail || sc == 1) break;
+        sc--;
+    }
+    int bw = sw + 2 * pad, bh = sw + jump + pad, bx = (LCD_W - bw) / 2;
+    int by = TOPM + 2 + (avail - bh) / 2;
+    if (by < TOPM) by = TOPM;
+    static const struct { const char *const *f; int up; int sp; int ms; } SEQ[] = {
+        {SIGNY_OPEN, 0, 0, 250}, {SIGNY_BLINK, 0, 0, 120}, {SIGNY_OPEN, 0, 0, 150},
+        {SIGNY_HAPPY, 1, 1, 170}, {SIGNY_HAPPY, 0, 2, 170}, {SIGNY_HAPPY, 1, 1, 170},
+        {SIGNY_HAPPY, 0, 2, 170}, {SIGNY_HAPPY, 1, 1, 170}, {SIGNY_HAPPY, 0, 2, 300},
+        {SIGNY_BLINK, 0, 0, 120}, {SIGNY_HAPPY, 0, 0, 500},
+    };
+    for (size_t i = 0; i < sizeof(SEQ) / sizeof(SEQ[0]); i++) {
+        UI_LOCK();
+        disp_sprite(SEQ[i].f, bx, by, bw, bh, pad, pad + (SEQ[i].up ? 0 : jump), sc, SEQ[i].sp, P_LAV);
+        UI_UNLOCK();
+        vTaskDelay(pdMS_TO_TICKS(SEQ[i].ms));
+    }
+    s_modal = 0;
 }
 
 void ui_seed_words(const char *mnemonic) {
@@ -339,7 +421,9 @@ void ui_seed_words(const char *mnemonic) {
             L_text(b, P_INK, t);
         }
         strcpy(b->foot_r, T_DOWN);
+        UI_LOCK();
         lay_render();
+        UI_UNLOCK();
         memset(s_boxes, 0, sizeof(s_boxes));
         ui_wait_button(100000, 0, NULL);
     }
@@ -425,7 +509,9 @@ static void build_page(const bs_psbt_t *p, int idx, int total, const char *code)
         L_big(c, P_INK, code);
         L_pair(c, P_GREEN, TW >= 18 ? "OK:BOOT2s/codigo" : "OK:BOOT/cod", P_RED, "X");
     }
+    UI_LOCK();
     lay_render();
+    UI_UNLOCK();
 }
 
 int ui_review(const bs_psbt_t *p, int timeout_ms, int (*abort_cb)(void)) {

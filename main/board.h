@@ -12,6 +12,13 @@
 #define BIGSC   2      // scale of "big" rows (spans 2 grid rows)
 #define LCD_ST7735 1
 #define BOARD_NAME "ESP32-C3 1.44"
+// mascot placement: idle (inside the box, white bg), splash, celebration area
+#define IDLE_SPR_SC 2
+#define IDLE_SPR_X  48
+#define IDLE_SPR_Y  84
+#define SPLASH_SC   3
+#define SPLASH_Y    40
+#define CELEB_SC    3
 #else
 // 320x172 ST7789 landscape: 20x10 tiles of 8x8 drawn at 2x
 #define LCD_W   320
@@ -22,6 +29,12 @@
 #define BIGSC   4
 #define LCD_ST7735 0
 #define BOARD_NAME "ESP32-C6 1.47"
+#define IDLE_SPR_SC 4
+#define IDLE_SPR_X  228
+#define IDLE_SPR_Y  (TOPM + 40)
+#define SPLASH_SC   4
+#define SPLASH_Y    (TOPM + 62)
+#define CELEB_SC    4
 #endif
 
 #define TW      (GW - 2)                 // text columns inside a box

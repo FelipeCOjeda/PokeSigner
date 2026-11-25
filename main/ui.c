@@ -308,7 +308,7 @@ void ui_idle(ui_link_t link) {
     char b1[24], b2[24];
     lay_begin();
     box_t *b = lay_box(); b->fill = 1;
-    L_pair(b, P_PURPLE, "POKESIGNER", P_LAV, TW >= 16 ? "v0.6.2" : "");
+    L_pair(b, P_PURPLE, "POKESIGNER", P_LAV, TW >= 16 ? "v0.6.3" : "");
     L_blank(b);
     snprintf(b1, sizeof(b1), "ID  %08" PRIX32, s_fp);
     L_text(b, P_INK, b1);

@@ -34,3 +34,5 @@ int  ble_send(uint8_t cmd, const uint8_t *payload, size_t len);
 int  ble_connected(void);
 void ble_release_rx(void);     // worker finished with the request buffer
 void ble_forget_bonds(void);
+// TX power index into {-6, 0, +3, +6, +9} dBm; returns the dBm value applied.
+int  ble_set_tx_power(int idx);

@@ -1,2 +1,5 @@
 CONFIG_IDF_TARGET="esp32c3"
 CONFIG_PS_BOARD_C3_SPOTPEAR_144=y
+
+# Many cheap C3 boards cannot radiate at +9 dBm (poor antenna/LDO): default to 0 dBm
+CONFIG_BT_CTRL_DFT_TX_POWER_LEVEL_N0=y

@@ -27,7 +27,7 @@
 #include "display.h"
 #include "board.h"
 
-#define FW_VERSION      "0.6.2"
+#define FW_VERSION      "0.6.3"
 #define APPROVE_HOLD_MS 2000
 #define CONFIRM_TIMEOUT_MS 120000
 #define NVS_NS          "pokesigner"
@@ -122,6 +122,17 @@ static uint8_t orient_load(void) {
 static void orient_save(uint8_t o) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) { nvs_set_u8(h, "orient", o); nvs_commit(h); nvs_close(h); }
+}
+
+static int8_t txp_load(void) {
+    nvs_handle_t h; int8_t v = -1;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) { nvs_get_i8(h, "txp", &v); nvs_close(h); }
+    return v;
+}
+
+static void txp_save(int8_t v) {
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) { nvs_set_i8(h, "txp", v); nvs_commit(h); nvs_close(h); }
 }
 
 static void seed_erase(void) {
@@ -336,7 +347,7 @@ static void worker_task(void *arg) {
 static void console_task(void *arg) {
     char line[64];
     for (;;) {
-        printf("\nComandos: info | girar | unpair | wipe\n> ");
+        printf("\nComandos: info | girar | potencia | unpair | wipe\n> ");
         read_line(line, sizeof(line), RL_EMPTY);
         if (!strcmp(line, "info")) {
             if (bs_signer_get_info(0, 0, s_text, sizeof(s_text)) == 0) printf("%s\n", s_text);
@@ -347,6 +358,11 @@ static void console_task(void *arg) {
             orient_save(o);
             ui_rotate(o);
             printf("Orientacao %u salva. Repita 'girar' ate o texto ficar certo.\n", o);
+        } else if (!strcmp(line, "potencia")) {
+            int8_t t = txp_load();
+            t = (int8_t)((t < 0 ? 1 : t + 1) % 5);
+            txp_save(t);
+            printf("Potencia BLE agora: %d dBm (salvo). Repita para trocar; teste a busca no celular.\n", ble_set_tx_power(t));
         } else if (!strcmp(line, "unpair")) {
             ble_forget_bonds();
             printf("Pareamentos BLE apagados.\n");
@@ -412,6 +428,15 @@ void app_main(void) {
     ui_idle(UI_ADV);
     ui_set_status_cb(phone_status);
     ble_start(name, on_request, on_control);
+    {
+#if CONFIG_IDF_TARGET_ESP32C3
+        int8_t def = 1;   // 0 dBm on the C3
+#else
+        int8_t def = 2;   // +3 dBm
+#endif
+        int8_t t = txp_load();
+        printf("[BLE] potencia de transmissao: %d dBm (comando 'potencia' troca)\n", ble_set_tx_power(t >= 0 ? t : def));
+    }
     printf("Memoria livre: %u bytes (minimo %u)\n", (unsigned)esp_get_free_heap_size(), (unsigned)esp_get_minimum_free_heap_size());
 
     xTaskCreate(console_task, "console", 8192, NULL, 3, NULL);

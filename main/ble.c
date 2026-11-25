@@ -9,6 +9,7 @@
 #include "freertos/task.h"
 #include "esp_random.h"
 #include "esp_err.h"
+#include "esp_bt.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
@@ -162,6 +163,16 @@ int ble_send(uint8_t cmd, const uint8_t *payload, size_t len) {
         off += chunk;
     }
     return 0;
+}
+
+int ble_set_tx_power(int idx) {
+    static const esp_power_level_t LV[5] = {ESP_PWR_LVL_N6, ESP_PWR_LVL_N0, ESP_PWR_LVL_P3, ESP_PWR_LVL_P6, ESP_PWR_LVL_P9};
+    static const int DBM[5] = {-6, 0, 3, 6, 9};
+    if (idx < 0 || idx > 4) idx = 1;
+    esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, LV[idx]);
+    esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, LV[idx]);
+    esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_SCAN, LV[idx]);
+    return DBM[idx];
 }
 
 void ble_forget_bonds(void) {

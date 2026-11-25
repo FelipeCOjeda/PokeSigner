@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_random.h"
+#include "esp_err.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
@@ -240,6 +241,7 @@ static void advertise(void) {
     struct ble_gap_adv_params p = {.conn_mode = BLE_GAP_CONN_MODE_UND, .disc_mode = BLE_GAP_DISC_MODE_GEN};
     int rc = ble_gap_adv_start(s_own_addr_type, NULL, BLE_HS_FOREVER, &p, gap_event, NULL);
     if (rc && rc != BLE_HS_EALREADY) printf("[BLE] erro ao anunciar: %d\n", rc);
+    else if (!rc) printf("[BLE] anuncio ativo\n");
 }
 
 static void on_sync(void) {
@@ -249,7 +251,7 @@ static void on_sync(void) {
     printf("[BLE] anunciando como \"%s\"\n", s_name);
 }
 
-static void on_reset(int reason) { printf("[BLE] reset do host: %d\n", reason); }
+static void on_reset(int reason) { printf("[BLE] ERRO: reset do host BLE (%d)\n", reason); }
 
 static void host_task(void *arg) {
     nimble_port_run();
@@ -259,7 +261,8 @@ static void host_task(void *arg) {
 void ble_start(const char *name, ble_request_cb cb, ble_request_cb control_cb) {
     s_cb = cb; s_ctrl_cb = control_cb;
     strncpy(s_name, name, sizeof(s_name) - 1);
-    ESP_ERROR_CHECK(nimble_port_init());
+    esp_err_t e = nimble_port_init();
+    if (e != ESP_OK) { printf("[BLE] ERRO ao iniciar o Bluetooth: %s\n", esp_err_to_name(e)); return; }
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.reset_cb = on_reset;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;

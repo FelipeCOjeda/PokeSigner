@@ -27,7 +27,7 @@
 #include "display.h"
 #include "board.h"
 
-#define FW_VERSION      "0.6.0"
+#define FW_VERSION      "0.6.1"
 #define APPROVE_HOLD_MS 2000
 #define CONFIRM_TIMEOUT_MS 120000
 #define NVS_NS          "pokesigner"
@@ -408,6 +408,7 @@ void app_main(void) {
     ui_idle(UI_ADV);
     ui_set_status_cb(phone_status);
     ble_start(name, on_request, on_control);
+    printf("Memoria livre: %u bytes (minimo %u)\n", (unsigned)esp_get_free_heap_size(), (unsigned)esp_get_minimum_free_heap_size());
 
     xTaskCreate(console_task, "console", 6144, NULL, 3, NULL);
 }

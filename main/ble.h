@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+#include "sdkconfig.h"
 
 // Protocol frame: [cmd:1][len:4 LE][payload:len], split across BLE writes /
 // notifications of any size.
@@ -19,7 +20,11 @@
 #define RSP_STATUS     0x90   // text, informative (e.g. waiting for button)
 #define RSP_ERROR      0xFF   // text
 
+#if CONFIG_IDF_TARGET_ESP32C3
+#define PROTO_MAX_PAYLOAD (16 * 1024)   // C3 has less RAM; still ~50 inputs
+#else
 #define PROTO_MAX_PAYLOAD (32 * 1024)
+#endif
 
 // Called from the BLE stack when a full request arrived. Must return quickly.
 typedef void (*ble_request_cb)(uint8_t cmd, const uint8_t *payload, size_t len);

@@ -190,13 +190,37 @@
   </div>
 
   <div class="card">
-    <h2 class="px"><span class="n">&#9654;</span> 3. PAREAR CELULAR</h2>
+    <h2 class="px"><span class="n">&#9654;</span> 3. PAREAR COM O CELULAR</h2>
+    <p>Com a seed configurada, a placa mostra o <b>ID</b> (fingerprint) e o nome <code>PokeSigner-XXXX</code>, e fica esperando o celular. Pode tirar do computador e ligar em qualquer carregador USB.</p>
     <ol>
-      <li>A tela da placa mostra o <b>fingerprint</b> e o nome <code>PokeSigner-XXXX</code>.</li>
-      <li>No celular, conecte pela PokeWallet (ou pelo app do sistema). A placa mostra um <b>código de 6 dígitos</b>: digite no celular.</li>
-      <li>Para assinar: revise as páginas na tela com <b>BOOT</b> (ou pelo celular). Na última aparece um <b>código de 6 dígitos</b>: digite no celular ou <b>segure BOOT 2 s</b> para aprovar. Toque rápido rejeita.</li>
-      <li>Se a imagem da placa ficar de cabeça para baixo ou espelhada, use o atalho <b>girar tela</b> até ficar certa.</li>
+      <li><b>Conecte pela carteira</b> (PokeWallet ou outra compatível), com o Bluetooth do celular ligado.</li>
+      <li>A placa mostra um <b>código de 6 dígitos</b>: digite no aviso de pareamento do celular. Só na primeira vez.</li>
+      <li>Na carteira, importe a conta do Signy. A carteira lê o ID e as chaves públicas; a seed nunca sai da placa.</li>
     </ol>
+
+    <h3 class="px">ASSINAR UMA TRANSAÇÃO</h3>
+    <ol>
+      <li>Monte o envio na carteira e mande para a placa.</li>
+      <li>Na tela da placa, confira <b>cada página</b>: destino, valor, troco e taxa. Aperte o botão para avançar (ou ◀ ▶ na carteira).</li>
+      <li>Na última página aparece um <b>código de 6 dígitos</b>. Para aprovar: digite o código na carteira <b>ou</b> segure o botão por 2 s.</li>
+      <li>Para recusar: toque curto na última página, ✖ na carteira ou o botão de rejeitar (C3).</li>
+    </ol>
+    <div class="note">O código de aprovação só aparece na tela da placa e muda a cada transação: um celular invadido não consegue aprovar sozinho.</div>
+
+    <h3 class="px">BOTÕES DE CADA PLACA</h3>
+    <ul>
+      <li><b>ESP32-C6:</b> BOOT avança; segurar 2 s na última página aprova.</li>
+      <li><b>ESP32-C3:</b> BOOT (GPIO9) e GPIO8 avançam e aprovam segurando 2 s; GPIO10 rejeita.</li>
+      <li><b>T-Display:</b> GPIO35 avança; GPIO0 avança e aprova segurando 2 s.</li>
+    </ul>
+
+    <h3 class="px">PROBLEMAS?</h3>
+    <ul>
+      <li><b>Não aparece no Bluetooth do celular:</b> conecte no computador e use <b>teste BLE</b> no terminal.</li>
+      <li><b>Pareou antes e parou de conectar</b> (ou regravou a placa): “esqueça” o dispositivo nas configurações de Bluetooth do celular e use <b>unpair</b> no terminal.</li>
+      <li><b>Imagem de cabeça para baixo:</b> <b>girar tela</b> no terminal.</li>
+    </ul>
+    <p class="muted">Desenvolvedores de carteiras: o protocolo aberto está em <a href="https://github.com/FelipeCOjeda/PokeSigner/blob/main/SIGNY-PROTOCOL.md">SIGNY-PROTOCOL.md</a>.</p>
     <p class="muted">Este instalador roda inteiro no seu navegador e não usa nenhum serviço externo: a biblioteca de gravação (esp-web-tools) e a fonte vêm junto com a página. Depois da primeira visita ele funciona sem internet.</p>
   </div>
   <div class="grille"><i></i><i></i><i></i><i></i></div>

@@ -1,6 +1,6 @@
 // Offline cache for the installer: after the first visit everything (page, flashing
 // library, font, firmware) is served from the browser cache when there is no internet.
-const CACHE = "pokesigner-0.7.1b";
+const CACHE = "pokesigner-0.7.1c";
 const FILES = [
  "./",
  "index.html",

@@ -318,14 +318,16 @@ void ui_idle(ui_link_t link) {
     snprintf(b1, sizeof(b1), "ID  %08" PRIX32, s_fp);
     L_text(b, P_INK, b1);
     const char *sfx = strchr(s_name, '-');
-    snprintf(b2, sizeof(b2), "BLE %s", sfx ? sfx + 1 : s_name);
+    if (link == UI_USB) snprintf(b2, sizeof(b2), "BLUETOOTH OFF");
+    else snprintf(b2, sizeof(b2), "BLE %s", sfx ? sfx + 1 : s_name);
     L_text(b, P_INK, b2);
     L_blank(b);
-    if (link == UI_SECURE) L_text(b, P_GREEN, T_ARROW " CONECTADO");
+    if (link == UI_USB) L_text(b, P_PURPLE, T_ARROW " MODO CABO");
+    else if (link == UI_SECURE) L_text(b, P_GREEN, T_ARROW " CONECTADO");
     else if (link == UI_CONNECTED) L_text(b, P_PURPLE, T_ARROW " PAREANDO...");
     else L_text(b, P_INK, T_ARROW " AGUARDANDO");
     L_blank(b);
-    L_text(b, P_PURPLE, "Envie um PSBT");
+    L_text(b, P_PURPLE, "Segure: menu");
     lay_render();
     idle_sprite(SIGNY_OPEN);
     s_idle_visible = 1;
@@ -636,7 +638,19 @@ int ui_review(const bs_psbt_t *p, int timeout_ms, int (*abort_cb)(void)) {
 
 // Shows the signed PSBT as a UR "crypto-psbt" QR (animated when it does not fit in
 // one code) until a button is pressed, abort_cb() returns non-zero or 10 min pass.
+static void qr_show(int raw, const char *type, const uint8_t *msg, size_t len,
+                    const char *l1, const char *l2, int (*abort_cb)(void));
+
 void ui_qr_psbt(const uint8_t *psbt, size_t len, int (*abort_cb)(void)) {
+    qr_show(0, NULL, psbt, len, "PSBT", "ASSINADA", abort_cb);
+}
+
+void ui_qr_ur(const char *type, const uint8_t *cbor, size_t len, const char *l1, const char *l2) {
+    qr_show(1, type, cbor, len, l1, l2, NULL);
+}
+
+static void qr_show(int raw, const char *type, const uint8_t *psbt, size_t len,
+                    const char *l1, const char *l2, int (*abort_cb)(void)) {
     if (!s_disp || !len) return;
     static uint8_t qr[qrcodegen_BUFFER_LEN_FOR_VERSION(QR_MAXVER)], tmp[qrcodegen_BUFFER_LEN_FOR_VERSION(QR_MAXVER)];
     static char part[qrcodegen_BUFFER_LEN_FOR_VERSION(QR_MAXVER) * 2];
@@ -644,12 +658,14 @@ void ui_qr_psbt(const uint8_t *psbt, size_t len, int (*abort_cb)(void)) {
     // largest fragment whose part still fits the biggest QR this screen can show
     size_t frag = 260;
     for (;;) {
-        bs_ur_init(&u, psbt, len, frag);
+        if (raw) bs_ur_init_raw(&u, type, psbt, len, frag);
+        else bs_ur_init(&u, psbt, len, frag);
         if (bs_ur_part(&u, 1, part, sizeof(part)) &&
             qrcodegen_encodeText(part, tmp, qr, qrcodegen_Ecc_LOW, 1, QR_MAXVER, qrcodegen_Mask_AUTO, true)) break;
         if (frag <= 20) return;
         frag -= 10;
     }
+    int was_modal = s_modal;
     s_modal = 1;
     int64_t t0 = esp_timer_get_time();
     uint32_t seq = 1;
@@ -660,7 +676,7 @@ void ui_qr_psbt(const uint8_t *psbt, size_t len, int (*abort_cb)(void)) {
             int qy = (LCD_H - side) / 2, qx = QR_TSZ ? (qy > 2 * QR_PX ? qy : 2 * QR_PX) : (LCD_W - side) / 2;
             char cnt[16];
             snprintf(cnt, sizeof(cnt), "%u/%u", (unsigned)((seq - 1) % u.seq_len + 1), (unsigned)u.seq_len);
-            const char *L[4] = {"PSBT", "ASSINADA", u.seq_len > 1 ? cnt : "", "BOTAO=SAI"};
+            const char *L[4] = {l1, l2, u.seq_len > 1 ? cnt : "", "BOTAO=SAI"};
             int tx = qx + side + QR_TSZ / 2, ty = (LCD_H - 4 * QR_TSZ - 3 * (QR_TSZ / 2)) / 2;
             UI_LOCK();
             disp_qr(qr, qx, qy, QR_PX, tx, ty, QR_TSZ, L, QR_TSZ ? 4 : 0);
@@ -679,5 +695,8 @@ void ui_qr_psbt(const uint8_t *psbt, size_t len, int (*abort_cb)(void)) {
     }
 out:
     memset(tmp, 0, sizeof(tmp));
-    s_modal = 0;
+    s_modal = was_modal;
 }
+
+int ui_is_modal(void) { return s_modal; }
+void ui_set_modal(int m) { s_modal = m; if (m) s_idle_visible = 0; }

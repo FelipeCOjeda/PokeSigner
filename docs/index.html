@@ -73,7 +73,7 @@
     <span class="led"></span><span class="lbl px">POWER</span>
     <div class="screen">
       <h1 class="px">POKESIGNER</h1>
-      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.8.0.</p>
+      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.9.0.</p>
       <div class="demo"><img src="assets/signy-c6.gif" alt="Signy, o mascote do PokeSigner, comemorando uma assinatura" width="320"><img src="assets/signy-c3.gif" alt="PokeSigner na tela da ESP32-C3" width="192"></div>
     </div>
     <div class="brand px">SIGNER <b>COLOR</b></div>
@@ -114,7 +114,7 @@
     <ul>
       <li><b>Botões:</b> aperto curto = próxima opção; <b>segurar ~0,7 s</b> = escolher. (C3: o botão GPIO10 volta uma opção.)</li>
       <li><b>GERAR:</b> 24 palavras do gerador aleatório do chip, mostradas só na tela, com o número de cada uma na lista BIP39 (1–2048). Anote e depois escolha na tela 3 palavras pedidas.</li>
-      <li><b>DADOS:</b> jogue um dado comum e informe cada resultado (mínimo 20, recomendado 99). A seed é SHA-256(aleatório do chip + dados + tempo), igual à PokeWallet: os dados só somam entropia.</li>
+      <li><b>DADOS:</b> jogue um dado comum e informe cada resultado (mínimo 20, recomendado 99). A seed é SHA-256(aleatório do chip + dados + tempo), a mesma receita usada na PokeWallet: os dados só somam entropia.</li>
       <li><b>IMPORTAR:</b> 12 ou 24 palavras, digitadas pelo <b>número</b> da palavra na lista oficial BIP39 (1–2048, a linha do arquivo <code>english.txt</code>) ou letra por letra. A placa mostra a palavra para você conferir e valida o checksum no fim.</li>
       <li><b>PASSPHRASE:</b> nenhuma ou digitada nos botões, com revisão antes de gravar.</li>
     </ul>
@@ -190,10 +190,10 @@
   </div>
 
   <div class="card">
-    <h2 class="px"><span class="n">&#9654;</span> 3. PAREAR COM O CELULAR</h2>
+    <h2 class="px"><span class="n">&#9654;</span> 3. USAR COM O CELULAR (APP SIGNY)</h2>
     <p>Com a seed configurada, a placa mostra o <b>ID</b> (fingerprint) e o nome <code>PokeSigner-XXXX</code>, e fica esperando o celular. Pode tirar do computador e ligar em qualquer carregador USB.</p>
     <ol>
-      <li><b>Conecte pela carteira</b> (PokeWallet ou outra compatível), com o Bluetooth do celular ligado.</li>
+      <li><b>Conecte pelo app <a href="https://github.com/FelipeCOjeda/signy">Signy</a></b> (Android) ou outra carteira compatível com o protocolo aberto, com o Bluetooth do celular ligado.</li>
       <li>A placa mostra um <b>código de 6 dígitos</b>: digite no aviso de pareamento do celular. Só na primeira vez.</li>
       <li>Na carteira, importe a conta do Signy. A carteira lê o ID e as chaves públicas; a seed nunca sai da placa.</li>
     </ol>
@@ -224,6 +224,33 @@
     <p class="muted">Desenvolvedores de carteiras: o protocolo aberto está em <a href="https://github.com/FelipeCOjeda/PokeSigner/blob/main/SIGNY-PROTOCOL.md">SIGNY-PROTOCOL.md</a>.</p>
     <p class="muted">Este instalador roda inteiro no seu navegador e não usa nenhum serviço externo: a biblioteca de gravação (esp-web-tools) e a fonte vêm junto com a página. Depois da primeira visita ele funciona sem internet.</p>
   </div>
+
+  <div class="card">
+    <h2 class="px"><span class="n">&#9654;</span> 4. SPARROW, BLUEWALLET E SEM BLUETOOTH</h2>
+    <h3 class="px">EXPORTAR A XPUB (QR)</h3>
+    <ol>
+      <li>Na tela inicial da placa, <b>segure o botão</b> (~0,7 s) para abrir o <b>MENU</b>.</li>
+      <li>Escolha <b>XPUB SEGWIT</b> (endereços <code>bc1q…</code>) ou <b>XPUB TAPROOT</b> (<code>bc1p…</code>).</li>
+      <li>Na carteira, crie uma carteira <b>watch-only / hardware airgapped</b> importando por <b>QR</b> e escaneie a tela.
+        O QR está no padrão UR <code>crypto-account</code> e leva o fingerprint e o caminho, que a placa precisa para reconhecer as próprias chaves.</li>
+    </ol>
+    <h3 class="px">ASSINAR PELO CABO USB</h3>
+    <p>As placas não têm câmera, então a PSBT criada na Sparrow ou na BlueWallet chega pelo cabo: exporte a PSBT (texto base64 ou arquivo <code>.psbt</code>), conecte a placa no passo 2 e envie aqui. Confira e aprove na placa (segure o botão 2 s na última página).</p>
+    <textarea id="psIn" rows="4" placeholder="Cole aqui a PSBT em base64 (cHNidP8...)" style="width:100%;box-sizing:border-box;font:12px ui-monospace,monospace"></textarea>
+    <div class="row">
+      <label class="sec" style="padding:8px 12px;border-radius:8px;cursor:pointer">Abrir arquivo .psbt<input type="file" id="psFile" accept=".psbt,.txt,application/octet-stream" hidden></label>
+      <button id="psSend" disabled>Enviar para a placa</button>
+      <span id="psState" class="muted">Conecte a placa no passo 2.</span>
+    </div>
+    <textarea id="psOut" rows="4" readonly placeholder="A PSBT assinada aparece aqui" style="width:100%;box-sizing:border-box;font:12px ui-monospace,monospace"></textarea>
+    <div class="row">
+      <button class="sec" id="psCopy" disabled>Copiar</button>
+      <button class="sec" id="psSave" disabled>Baixar .psbt</button>
+    </div>
+    <p class="muted">Depois de assinar, a placa também mostra a PSBT assinada em <b>QR animado</b> (UR <code>crypto-psbt</code>): a Sparrow (webcam) e a BlueWallet leem direto da tela.</p>
+    <h3 class="px">DESLIGAR O BLUETOOTH</h3>
+    <p>MENU → <b>DESLIGAR BLE</b>: a placa reinicia sem rádio Bluetooth e só assina pelo cabo. Para religar: MENU → <b>LIGAR BLE</b>.</p>
+  </div>
   <div class="grille"><i></i><i></i><i></i><i></i></div>
 </main>
 
@@ -253,12 +280,27 @@
   setBoard(saved);
 
   const MAX = 200000;
-  let raw = "";
+  let raw = "", hiding = false;
+  // the signed PSBT line ("@@PSBTOUT@@ <base64>") is not printed in the terminal
+  function hideOut(text) {
+    let out = "", i = 0;
+    while (i < text.length) {
+      if (hiding) {
+        const nl = text.indexOf("\n", i);
+        if (nl < 0) return out;
+        hiding = false; out += "[PSBT assinada recebida pelo cabo]\n"; i = nl + 1; continue;
+      }
+      const m = text.indexOf("@@PSBTOUT@@", i);
+      if (m < 0) { out += text.slice(i); break; }
+      out += text.slice(i, m); hiding = true; i = m + 11;
+    }
+    return out;
+  }
   const seedHooks = [];
   function print(text) {
-    raw = (raw + text).slice(-4000);
+    raw = (raw + text).slice(-120000);   // (a signed PSBT in base64 can be ~44 KB)
     for (const h of seedHooks.splice(0)) if (!h(raw)) seedHooks.push(h);
-    text = text.replace(/@@[A-Z0-9]+@@ ?/g, "");
+    text = hideOut(text).replace(/@@[A-Z0-9]+@@ ?/g, "");
     // handle the firmware's "clear screen" escape and strip other ANSI codes
     const parts = text.split("\x1b[2J");
     if (parts.length > 1) { term.textContent = ""; text = parts[parts.length - 1]; }
@@ -282,6 +324,7 @@
     for (const el of [cmd, $("btnSend"), $("btnReset"), $("btnMenu"), ...document.querySelectorAll(".quick")]) el.disabled = !on;
     $("btnConnect").textContent = on ? "Desconectar" : "Conectar";
     vkUpdate();
+    if (typeof psUpdate === "function") psUpdate();
   }
 
   function applyMask() { cmd.type = mask.checked ? "password" : "text"; }
@@ -469,6 +512,56 @@
       $("offBadge").textContent = "Esta página já fica guardada no navegador: funciona sem internet, inclusive a gravação do firmware.";
     }).catch(() => {});
   }
+
+  /* ---------------- sign over USB ---------------- */
+  const ps = { bytes: null, out: null };
+  function psbtFromText(t) {
+    t = t.trim();
+    if (/^[0-9a-fA-F]+$/.test(t) && t.startsWith("70736274ff")) return Uint8Array.from(t.match(/../g), h => parseInt(h, 16));
+    try { return Uint8Array.from(atob(t.replace(/\s+/g, "")), c => c.charCodeAt(0)); } catch (_) { return null; }
+  }
+  const b64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode(...u8.subarray(i, i + 8192)); return btoa(s); };
+  function psUpdate() {
+    const b = psbtFromText($("psIn").value);
+    ps.bytes = b && b.length > 10 && b[0] === 0x70 && b[1] === 0x73 && b[2] === 0x62 && b[3] === 0x74 && b[4] === 0xff ? b : null;
+    $("psSend").disabled = !(writer && ps.bytes);
+    if (!writer) $("psState").textContent = "Conecte a placa no passo 2.";
+    else $("psState").textContent = ps.bytes ? "PSBT de " + ps.bytes.length + " bytes pronta." : "Cole ou abra uma PSBT.";
+  }
+  $("psIn").oninput = psUpdate;
+  $("psFile").onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const buf = new Uint8Array(await f.arrayBuffer());
+    $("psIn").value = buf[0] === 0x70 && buf[4] === 0xff ? b64(buf) : new TextDecoder().decode(buf).trim();
+    psUpdate();
+  };
+  $("psSend").onclick = async () => {
+    const st = $("psState");
+    $("psSend").disabled = true; $("psOut").value = ""; $("psCopy").disabled = $("psSave").disabled = true;
+    try {
+      raw = "";
+      await send("assinar");
+      await waitFor(/@@PSBTIN@@/, 8000);
+      const txt = b64(ps.bytes) + "\r";
+      const enc = new TextEncoder().encode(txt);
+      for (let i = 0; i < enc.length; i += 512) { await writer.write(enc.subarray(i, i + 512)); await new Promise(r => setTimeout(r, 15)); }
+      st.textContent = "Enviada. Confira e aprove NA PLACA (segure o botão 2 s na última página).";
+      const r = await waitFor(/@@PSBT(OUT|ERR)@@ ([^\r\n]*)[\r\n]/, 300000);
+      const m = r.match(/@@PSBT(OUT|ERR)@@ ([^\r\n]*)/);
+      if (m[1] === "ERR") throw new Error(m[2]);
+      $("psOut").value = m[2]; ps.out = m[2];
+      $("psCopy").disabled = $("psSave").disabled = false;
+      st.textContent = "PSBT assinada recebida. Importe na Sparrow/BlueWallet (ou leia o QR na placa).";
+    } catch (e) {
+      st.textContent = "Não assinada: " + e.message;
+    } finally { psUpdate(); }
+  };
+  $("psCopy").onclick = () => navigator.clipboard.writeText(ps.out || "");
+  $("psSave").onclick = () => {
+    const bin = Uint8Array.from(atob(ps.out), c => c.charCodeAt(0));
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([bin], { type: "application/octet-stream" }));
+    a.download = "assinada-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".psbt"; a.click();
+  };
 
   $("btnConnect").onclick = () => (port ? disconnect() : connect());
   $("btnReset").onclick = resetBoard;

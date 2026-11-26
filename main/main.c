@@ -30,6 +30,7 @@
 
 #include "bs_signer.h"
 #include "bs_bip39.h"
+#include "bs_encode.h"
 #include "bs_crypto.h"
 #include "ble.h"
 #include "ui.h"
@@ -140,6 +141,16 @@ static uint8_t orient_load(void) {
 static void orient_save(uint8_t o) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) { nvs_set_u8(h, "orient", o); nvs_commit(h); nvs_close(h); }
+}
+
+static int ble_load(void) {   // Bluetooth on (default) or off
+    nvs_handle_t h; uint8_t v = 1;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) { nvs_get_u8(h, "ble", &v); nvs_close(h); }
+    return v != 0;
+}
+static void ble_save(int on) {
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) { nvs_set_u8(h, "ble", on ? 1 : 0); nvs_commit(h); nvs_close(h); }
 }
 
 static int8_t txp_load(void) {
@@ -566,24 +577,36 @@ static void setup_seed_device(seed_store_t *s) {
 
 /* ------------------------------------------------------------ worker */
 
-typedef struct { uint8_t cmd; const uint8_t *payload; size_t len; } job_t;
+enum { SRC_BLE = 0, SRC_USB = 1 };
+// payload: BLE receive buffer (released with ble_release_rx) or, for USB, a heap
+// buffer owned by the job (freed after it).
+typedef struct { uint8_t cmd; const uint8_t *payload; size_t len; uint8_t src; } job_t;
+static int s_src;                // source of the job being handled
+static volatile int s_menu;      // device menu open
+static int s_ble_on = 1;
 static QueueHandle_t s_jobs;
 static uint8_t s_out[PROTO_MAX_PAYLOAD + 4096];
 static char s_text[4096];
 static bs_psbt_t s_psbt;
 
 static void on_request(uint8_t cmd, const uint8_t *payload, size_t len) {
-    job_t j = {cmd, payload, len};
+    job_t j = {cmd, payload, len, SRC_BLE};
     if (xQueueSend(s_jobs, &j, 0) != pdTRUE) ble_release_rx();
 }
 
-static int disconnected(void) { return !ble_connected(); }
+static int disconnected(void) { return s_src == SRC_BLE && !ble_connected(); }
 
 static void on_control(uint8_t cmd, const uint8_t *payload, size_t len) { ui_remote_event(cmd, payload, len); }
 
-static void phone_status(const char *m) { ble_send(RSP_STATUS, (const uint8_t *)m, strlen(m)); }
+static void phone_status(const char *m) {
+    if (s_src == SRC_USB) printf("[placa] %s\n", m);
+    else ble_send(RSP_STATUS, (const uint8_t *)m, strlen(m));
+}
 
-static void reply_err(const char *msg) { ble_send(RSP_ERROR, (const uint8_t *)msg, strlen(msg)); }
+static void reply_err(const char *msg) {
+    if (s_src == SRC_USB) printf("\n@@PSBTERR@@ %s\n", msg);
+    else ble_send(RSP_ERROR, (const uint8_t *)msg, strlen(msg));
+}
 
 static size_t s_qr_len;   // signed PSBT in s_out to show as QR (0 = none)
 
@@ -622,8 +645,7 @@ static void handle_sign(const uint8_t *psbt, size_t len) {
         printf("Revise na tela. BOOT (ou o celular) avanca as paginas; na ultima: segure BOOT 2s ou digite no celular o codigo da tela = APROVAR.\n");
     else
         printf("SEGURE o botao BOOT por 2s para APROVAR. Toque rapido = REJEITAR. (expira em 2 min)\n");
-    const char *st = "aguardando confirmacao no dispositivo";
-    ble_send(RSP_STATUS, (const uint8_t *)st, strlen(st));
+    phone_status("aguardando confirmacao no dispositivo");
     int ok = ui_review(&s_psbt, CONFIRM_TIMEOUT_MS, disconnected);
     if (ok != 1) {
         printf(ok == 0 ? "[PSBT] REJEITADO\n" : "[PSBT] cancelado (timeout ou desconexao)\n");
@@ -635,16 +657,33 @@ static void handle_sign(const uint8_t *psbt, size_t len) {
     r = bs_psbt_sign(&s_psbt, s_out, sizeof(s_out), &olen);
     if (r) { printf("[PSBT] erro ao assinar: %s\n", bs_strerror(r)); reply_err(bs_strerror(r)); ui_refresh_idle(); return; }
     printf("[PSBT] assinado (%u entradas), enviando %u bytes\n", (unsigned)s_psbt.n_sign, (unsigned)olen);
-    int sent = ble_send(RSP_SIGNED, s_out, olen);
-    if (sent == 0) ui_celebrate("Enviado ao celular.", NULL);
+    int sent;
+    if (s_src == SRC_USB) {
+        size_t cap = (olen + 2) / 3 * 4 + 1;
+        char *b64 = malloc(cap);
+        sent = b64 && bs_base64_encode(s_out, olen, b64, cap) ? 0 : -1;
+        if (!sent) printf("\n@@PSBTOUT@@ %s\n", b64);
+        else reply_err("sem memoria para responder pelo cabo (leia o QR)");
+        free(b64);
+    } else {
+        sent = ble_send(RSP_SIGNED, s_out, olen);
+    }
+    if (sent == 0) ui_celebrate(s_src == SRC_USB ? "Enviado pelo cabo." : "Enviado ao celular.", NULL);
     else { ui_msg("FALHA BLE", "Leia o QR com outra", "carteira.", C_RED); vTaskDelay(pdMS_TO_TICKS(1500)); }
     s_qr_len = olen;   // the worker shows the QR after releasing the BLE receiver
 }
 
 static int job_pending(void) { return uxQueueMessagesWaiting(s_jobs) > 0; }
 
+static void job_done(job_t *j) {
+    if (j->src == SRC_USB) free((void *)j->payload);
+    else ble_release_rx();
+    s_src = SRC_BLE;
+}
+
 static void handle_job(job_t *jp) {
     job_t j = *jp;
+    s_src = j.src;
     switch (j.cmd) {
     case CMD_PING: {
         int n = snprintf(s_text, sizeof(s_text), "PokeSigner %s fp=%08" PRIx32, FW_VERSION, bs_signer_fingerprint());
@@ -661,6 +700,7 @@ static void handle_job(job_t *jp) {
         break;
     }
     case CMD_SIGN_PSBT:
+        if (s_menu) { reply_err("menu aberto na placa: feche e tente de novo"); break; }
         handle_sign(j.payload, j.len);
         break;
     case CMD_CONFIRM: case CMD_CANCEL: case CMD_NEXT: case CMD_PREV:
@@ -677,7 +717,7 @@ static int qr_poll(void) {
     job_t j;
     if (xQueuePeek(s_jobs, &j, 0) != pdTRUE) return 0;
     if (j.cmd == CMD_SIGN_PSBT) return 1;
-    if (xQueueReceive(s_jobs, &j, 0) == pdTRUE) { handle_job(&j); ble_release_rx(); }
+    if (xQueueReceive(s_jobs, &j, 0) == pdTRUE) { handle_job(&j); job_done(&j); }
     return 0;
 }
 
@@ -686,7 +726,7 @@ static void worker_task(void *arg) {
     for (;;) {
         if (xQueueReceive(s_jobs, &j, portMAX_DELAY) != pdTRUE) continue;
         handle_job(&j);
-        ble_release_rx();
+        job_done(&j);
         if (s_qr_len) {
             ui_qr_psbt(s_out, s_qr_len, qr_poll);
             s_qr_len = 0;
@@ -697,10 +737,67 @@ static void worker_task(void *arg) {
 
 /* ------------------------------------------------------------ serial commands */
 
+/* ------------------------------------------------------------ device menu */
+
+static void show_xpub(int taproot) {
+    static uint8_t cb[200];
+    size_t n;
+    if (bs_signer_account_cbor(0, taproot, 0, cb, sizeof(cb), &n) == BS_OK)
+        ui_qr_ur("CRYPTO-ACCOUNT", cb, n, "XPUB", taproot ? "TAPROOT" : "SEGWIT");
+}
+
+// Opened by holding the button on the idle screen.
+static void device_menu(void) {
+    s_menu = 1;
+    ui_set_modal(1);
+    for (;;) {
+        const char *o[4] = {"XPUB SEGWIT", "XPUB TAPROOT", s_ble_on ? "DESLIGAR BLE" : "LIGAR BLE", "SAIR"};
+        int r = ui_pick("MENU", "XPUB: Sparrow, BlueWallet", o, 4, 0);
+        if (r == 0 || r == 1) { show_xpub(r); continue; }
+        if (r == 2) {
+            static const char *const YN[2] = {"REINICIAR", "VOLTAR"};
+            if (ui_pick(s_ble_on ? "DESLIGAR BLE?" : "LIGAR BLE?",
+                        s_ble_on ? "Assinar so pelo cabo USB." : "Volta a falar com o celular.", YN, 2, 0) == 0) {
+                ble_save(!s_ble_on);
+                ui_msg("REINICIANDO", NULL, NULL, C_YELLOW);
+                vTaskDelay(pdMS_TO_TICKS(600));
+                esp_restart();
+            }
+            continue;
+        }
+        break;
+    }
+    ui_set_modal(0);
+    s_menu = 0;
+    ui_refresh_idle();
+}
+
+// "assinar": receives a base64 PSBT on the serial line (from the installer page) and
+// queues it like a BLE request; the result goes back as "@@PSBTOUT@@ <base64>".
+static void usb_sign(void) {
+    size_t cap = PROTO_MAX_PAYLOAD / 3 * 4 + 8;
+    char *b = malloc(cap);
+    if (!b) { printf("\n@@PSBTERR@@ sem memoria\n"); return; }
+    printf("\n@@PSBTIN@@ envie o PSBT em base64 e Enter\n");
+    size_t n = 0;
+    for (;;) {
+        int c = con_getc(n ? 3000 : 30000);
+        if (c < 0) { free(b); printf("\n@@PSBTERR@@ tempo esgotado\n"); return; }
+        if (c == '\r' || c == '\n') { if (n) break; else continue; }
+        if (n + 1 >= cap) { free(b); printf("\n@@PSBTERR@@ PSBT grande demais\n"); return; }
+        b[n++] = (char)c;
+    }
+    int len = bs_base64_decode(b, n, (uint8_t *)b, cap);   // in place
+    if (len < 16) { free(b); printf("\n@@PSBTERR@@ base64 invalido\n"); return; }
+    printf("[cabo] PSBT recebido: %d bytes\n", len);
+    job_t j = {CMD_SIGN_PSBT, (const uint8_t *)b, (size_t)len, SRC_USB};
+    if (xQueueSend(s_jobs, &j, 0) != pdTRUE) { free(b); printf("\n@@PSBTERR@@ ocupado\n"); }
+}
+
 static void console_task(void *arg) {
     char line[64];
     for (;;) {
-        printf("\nComandos: info | girar | potencia | mac | scan | unpair | wipe\n> ");
+        printf("\nComandos: info | assinar | girar | potencia | mac | scan | unpair | wipe\n> ");
         read_line(line, sizeof(line), RL_EMPTY);
         if (!strcmp(line, "info")) {
             if (bs_signer_get_info(0, 0, s_text, sizeof(s_text)) == 0) printf("%s\n", s_text);
@@ -716,6 +813,8 @@ static void console_task(void *arg) {
             t = (int8_t)((t < 0 ? 1 : t + 1) % 5);
             txp_save(t);
             printf("Potencia BLE agora: %d dBm (salvo). Repita para trocar; teste a busca no celular.\n", ble_set_tx_power(t));
+        } else if (!strcmp(line, "assinar")) {
+            usb_sign();
         } else if (!strcmp(line, "mac")) {
             ble_print_addr();
         } else if (!strcmp(line, "scan")) {
@@ -786,6 +885,11 @@ void app_main(void) {
     esp_read_mac(mac, ESP_MAC_BT);
     snprintf(name, sizeof(name), "PokeSigner-%02X%02X", mac[4], mac[5]);
     ui_set_identity(name, bs_signer_fingerprint());
+    s_ble_on = ble_load();
+    if (!s_ble_on) {
+        ui_idle(UI_USB);
+        printf("Bluetooth DESLIGADO (o menu da placa liga de novo). Assine pelo cabo: comando 'assinar' / instalador.\n");
+    } else {
     ui_idle(UI_ADV);
     ui_set_status_cb(phone_status);
     ble_start(name, on_request, on_control);
@@ -798,7 +902,19 @@ void app_main(void) {
         int8_t t = txp_load();
         printf("[BLE] potencia de transmissao: %d dBm (comando 'potencia' troca)\n", ble_set_tx_power(t >= 0 ? t : def));
     }
+    }
     printf("Memoria livre: %u bytes (minimo %u)\n", (unsigned)esp_get_free_heap_size(), (unsigned)esp_get_minimum_free_heap_size());
 
     xTaskCreate(console_task, "console", 8192, NULL, 3, NULL);
+
+    // hold the button on the idle screen (~0.7 s) = device menu
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(50));
+        if (!ui_has_display() || ui_is_modal() || uxQueueMessagesWaiting(s_jobs) || !ui_button_down()) continue;
+        int64_t t0 = esp_timer_get_time();
+        while (ui_button_down() && (esp_timer_get_time() - t0) < 700000) vTaskDelay(pdMS_TO_TICKS(20));
+        if (!ui_button_down() || ui_is_modal()) continue;
+        while (ui_button_down()) vTaskDelay(pdMS_TO_TICKS(20));
+        device_menu();
+    }
 }

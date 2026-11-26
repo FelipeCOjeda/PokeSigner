@@ -36,6 +36,9 @@ uint32_t bs_signer_fingerprint(void);
 
 // JSON: {"fingerprint":"..","network":"..","wpkh":"<descriptor>","tr":"<descriptor>"}
 int bs_signer_get_info(int testnet, uint32_t account, char *out, size_t outlen);
+// UR crypto-account CBOR (one descriptor: BIP84 wpkh or BIP86 tr) for watch-only
+// wallets such as Sparrow and BlueWallet. cap >= 160.
+int bs_signer_account_cbor(int testnet, int taproot, uint32_t account, uint8_t *out, size_t cap, size_t *outlen);
 
 typedef struct {
     // raw map spans in the original buffer (key-value pairs, without 0x00 terminator)

@@ -1,9 +1,19 @@
 # PokeSigner — assinador de PSBT via BLE para ESP32-C6
 
 Firmware ESP-IDF que transforma um ESP32-C6 em assinador Bitcoin single-sig.
-O celular (PokeWallet) envia o PSBT por BLE; o dispositivo mostra os detalhes
+O celular ([app Signy](https://github.com/FelipeCOjeda/signy) ou outra carteira que implemente o [protocolo aberto](SIGNY-PROTOCOL.md)) envia o PSBT por BLE; o dispositivo mostra os detalhes
 **na tela** (Waveshare ESP32-C6-LCD-1.47) e só assina após você revisar todas as
 páginas e **segurar o botão BOOT por 2 s**.
+
+## Sparrow, BlueWallet e modo sem Bluetooth
+
+- **xpub em QR:** segure o botão na tela inicial → MENU → XPUB SEGWIT / XPUB TAPROOT. O QR é UR
+  `crypto-account` (BCR-2020-015) com fingerprint e caminho (BIP84 `wpkh` / BIP86 `tr`), para criar a
+  carteira watch-only na Sparrow, BlueWallet etc.
+- **Assinar pelo cabo:** as placas não têm câmera; a PSBT da Sparrow/BlueWallet entra pelo USB pelo
+  instalador (seção 4) ou pelo comando serial `assinar` (base64 numa linha; resposta `@@PSBTOUT@@ <base64>`).
+- **Saída:** PSBT assinada em QR animado UR `crypto-psbt` na tela, e em base64/arquivo no instalador.
+- **Bluetooth desligado:** MENU → DESLIGAR BLE (a placa reinicia sem o rádio BLE; só cabo). MENU → LIGAR BLE volta.
 
 ## Para desenvolvedores de carteiras
 
@@ -159,7 +169,7 @@ Resposta de GET_INFO:
 O PSBT devolvido é o original com `PSBT_IN_PARTIAL_SIG` (P2WPKH) ou
 `PSBT_IN_TAP_KEY_SIG` (P2TR) adicionados. Finalizar e transmitir fica a cargo da wallet.
 
-### O que a PokeWallet precisa colocar no PSBT
+### O que a carteira precisa colocar no PSBT
 
 Para cada entrada a assinar:
 - `PSBT_IN_WITNESS_UTXO` (e, se possível, `PSBT_IN_NON_WITNESS_UTXO` para P2WPKH);

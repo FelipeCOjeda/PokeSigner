@@ -74,4 +74,4 @@
 #define QR_TSZ 12
 #endif
 
-#define FW_VERSION "0.8.0"
+#define FW_VERSION "0.9.0"

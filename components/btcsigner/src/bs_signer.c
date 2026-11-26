@@ -158,6 +158,55 @@ static int xpub_at(const uint32_t *path, size_t depth, int testnet, char *out, s
     return bs_base58check(ser, 78, out, outlen) ? BS_ERR_BUFFER : BS_OK;
 }
 
+/* ------------------------------------------------------------ UR crypto-account */
+
+static size_t cb_head(uint8_t *o, uint8_t major, uint64_t v) {   // canonical CBOR head
+    major <<= 5;
+    if (v < 24) { o[0] = major | (uint8_t)v; return 1; }
+    if (v <= 0xFF) { o[0] = major | 24; o[1] = (uint8_t)v; return 2; }
+    if (v <= 0xFFFF) { o[0] = major | 25; o[1] = (uint8_t)(v >> 8); o[2] = (uint8_t)v; return 3; }
+    o[0] = major | 26; o[1] = (uint8_t)(v >> 24); o[2] = (uint8_t)(v >> 16); o[3] = (uint8_t)(v >> 8); o[4] = (uint8_t)v;
+    return 5;
+}
+
+// crypto-account (BCR-2020-015) with one output descriptor: wpkh (tag 404, BIP84) or
+// tr (tag 409, BIP86) around a crypto-hdkey (tag 303) carrying the key origin
+// (master fingerprint + path), so watch-only wallets build PSBTs this signer recognizes.
+int bs_signer_account_cbor(int testnet, int taproot, uint32_t account, uint8_t *o, size_t cap, size_t *outlen) {
+    if (!g_ready || cap < 160 || account >= 0x80000000u) return BS_ERR_BUFFER;
+    uint32_t purpose = taproot ? 86 : 84, coin = testnet ? 1 : 0;
+    uint32_t path[3] = {H(purpose), H(coin), H(account)};
+    uint8_t priv[32], chain[32], pub[33];
+    uint32_t pfp = 0;
+    if (derive(path, 3, priv, chain, &pfp)) return BS_ERR_CRYPTO;
+    int r = pub_from_priv(priv, pub);
+    bs_wipe(priv, 32);
+    if (r) return BS_ERR_CRYPTO;
+    size_t n = 0;
+    o[n++] = 0xA2;                                   // map(2)
+    o[n++] = 0x01; n += cb_head(o + n, 0, g_fp);    // 1: master fingerprint
+    o[n++] = 0x02; o[n++] = 0x81;                    // 2: [ descriptor ]
+    n += cb_head(o + n, 6, taproot ? 409 : 404);    // tag: tr / wpkh
+    n += cb_head(o + n, 6, 303);                     // tag: crypto-hdkey
+    o[n++] = testnet ? 0xA5 : 0xA4;
+    o[n++] = 0x03; o[n++] = 0x58; o[n++] = 33; memcpy(o + n, pub, 33); n += 33;     // key-data
+    o[n++] = 0x04; o[n++] = 0x58; o[n++] = 32; memcpy(o + n, chain, 32); n += 32;   // chain-code
+    bs_wipe(chain, 32);
+    if (testnet) {                                   // 5: use-info {2: network = testnet}
+        o[n++] = 0x05; n += cb_head(o + n, 6, 305); o[n++] = 0xA1; o[n++] = 0x02; o[n++] = 0x01;
+    }
+    o[n++] = 0x06; n += cb_head(o + n, 6, 304);     // 6: origin = crypto-keypath
+    o[n++] = 0xA2;
+    o[n++] = 0x01; o[n++] = 0x86;                    // components [purpose', coin', account']
+    n += cb_head(o + n, 0, purpose); o[n++] = 0xF5;
+    n += cb_head(o + n, 0, coin);    o[n++] = 0xF5;
+    n += cb_head(o + n, 0, account); o[n++] = 0xF5;
+    o[n++] = 0x02; n += cb_head(o + n, 0, g_fp);    // source fingerprint
+    o[n++] = 0x08; n += cb_head(o + n, 0, pfp);     // 8: parent fingerprint
+    *outlen = n;
+    return BS_OK;
+}
+
 int bs_signer_get_info(int testnet, uint32_t account, char *out, size_t outlen) {
     if (!g_ready) return BS_ERR_CRYPTO;
     static const struct { uint32_t purpose; const char *name; } T[2] = {{84, "wpkh"}, {86, "tr"}};

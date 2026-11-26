@@ -42,10 +42,26 @@ static uint8_t msg_byte(const bs_ur_t *u, size_t i) {
     return i < u->psbt_len ? u->psbt[i] : 0;   // zero padding after the end
 }
 
+static void ur_split(bs_ur_t *u, size_t max_frag);
+
 void bs_ur_init(bs_ur_t *u, const uint8_t *psbt, size_t len, size_t max_frag) {
     memset(u, 0, sizeof(*u));
+    u->type = "CRYPTO-PSBT";
     u->psbt = psbt; u->psbt_len = len;
     u->hdr_len = cbor_head(u->hdr, 2, len);           // major type 2 = byte string
+    ur_split(u, max_frag);
+}
+
+void bs_ur_init_raw(bs_ur_t *u, const char *type, const uint8_t *cbor, size_t len, size_t max_frag) {
+    memset(u, 0, sizeof(*u));
+    u->type = type;
+    u->psbt = cbor; u->psbt_len = len;                 // message used as is
+    ur_split(u, max_frag);
+}
+
+static void ur_split(bs_ur_t *u, size_t max_frag) {
+    size_t len = u->psbt_len;
+    const uint8_t *psbt = u->psbt;
     u->msg_len = u->hdr_len + len;
     u->crc = bs_crc32(bs_crc32(0, u->hdr, u->hdr_len), psbt, len);
     if (max_frag < 10) max_frag = 10;
@@ -70,7 +86,9 @@ static void put_crc(bw_t *w) {
 
 size_t bs_ur_part(const bs_ur_t *u, uint32_t seq, char *out, size_t cap) {
     bw_t w = {out, 0, cap, 0, 1};
-    put_s(&w, "UR:CRYPTO-PSBT/");
+    put_s(&w, "UR:");
+    put_s(&w, u->type);
+    put_c(&w, '/');
     if (u->seq_len <= 1) {
         for (size_t i = 0; i < u->msg_len; i++) put_b(&w, msg_byte(u, i));
     } else {

@@ -11,11 +11,14 @@ typedef struct {
     uint8_t hdr[5];
     size_t hdr_len, msg_len, frag_len;
     uint32_t seq_len, crc;  // crc32 of the whole message
+    const char *type;       // UPPERCASE UR type, e.g. "CRYPTO-PSBT"
 } bs_ur_t;
 
 uint32_t bs_crc32(uint32_t crc, const uint8_t *d, size_t n);   // start with 0
 // Splits into fragments of at most max_frag bytes (equal sizes, last one zero-padded).
 void bs_ur_init(bs_ur_t *u, const uint8_t *psbt, size_t len, size_t max_frag);
+// Any UR type whose CBOR message is already built (e.g. "CRYPTO-ACCOUNT").
+void bs_ur_init_raw(bs_ur_t *u, const char *type, const uint8_t *cbor, size_t len, size_t max_frag);
 // Writes part `seq` (1-based; wraps around seq_len) as UPPERCASE text, e.g.
 // "UR:CRYPTO-PSBT/3-12/LPAX...". With seq_len == 1 writes the single-part form
 // "UR:CRYPTO-PSBT/...". Returns the length, or 0 if cap is too small.

@@ -24,7 +24,7 @@ int  ui_has_display(void);
 int  ui_wait_button(int hold_ms, int timeout_ms, int (*abort_cb)(void));
 int  ui_button_down(void);   // any button currently pressed
 
-typedef enum { UI_ADV, UI_CONNECTED, UI_SECURE } ui_link_t;
+typedef enum { UI_ADV, UI_CONNECTED, UI_SECURE, UI_USB } ui_link_t;
 void ui_set_identity(const char *name, uint32_t fingerprint);
 void ui_idle(ui_link_t link);
 void ui_refresh_idle(void);     // redraws idle screen unless a modal screen is up
@@ -34,6 +34,10 @@ void ui_seed_words(const char *mnemonic);
 // Picker using only the device buttons (tap = next, hold = choose). Returns the chosen index.
 // Signed PSBT as a UR crypto-psbt QR (animated if needed) until a button press.
 void ui_qr_psbt(const uint8_t *psbt, size_t len, int (*abort_cb)(void));
+// Any UR (e.g. "CRYPTO-ACCOUNT") as QR with two side labels, until a button press.
+void ui_qr_ur(const char *type, const uint8_t *cbor, size_t len, const char *l1, const char *l2);
+int  ui_is_modal(void);
+void ui_set_modal(int m);   // keeps BLE status updates off the screen (menus)
 int  ui_pick(const char *title, const char *info, const char *const *opts, int n, int start);
 void ui_celebrate(const char *l1, const char *l2);   // mascot animation after signing   // pages through the words with BOOT
 

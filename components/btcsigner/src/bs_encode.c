@@ -95,3 +95,46 @@ int bs_script_to_addr(const uint8_t *s, size_t n, int testnet, char *out, size_t
     }
     return -1;  // non-standard (e.g. OP_RETURN)
 }
+
+/* ------------------------------------------------------------ base64 */
+
+static const char B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+int bs_base64_decode(const char *in, size_t n, uint8_t *out, size_t cap) {
+    uint32_t acc = 0;
+    int bits = 0;
+    size_t o = 0;
+    for (size_t i = 0; i < n; i++) {
+        char c = in[i];
+        int v;
+        if (c >= 'A' && c <= 'Z') v = c - 'A';
+        else if (c >= 'a' && c <= 'z') v = c - 'a' + 26;
+        else if (c >= '0' && c <= '9') v = c - '0' + 52;
+        else if (c == '+' || c == '-') v = 62;
+        else if (c == '/' || c == '_') v = 63;
+        else if (c == '=' || c == ' ' || c == '\r' || c == '\n' || c == '\t') continue;
+        else return -1;
+        acc = (acc << 6) | (uint32_t)v;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            if (o >= cap) return -1;
+            out[o++] = (uint8_t)(acc >> bits);
+        }
+    }
+    return (int)o;
+}
+
+size_t bs_base64_encode(const uint8_t *in, size_t n, char *out, size_t cap) {
+    size_t need = (n + 2) / 3 * 4 + 1, o = 0;
+    if (cap < need) return 0;
+    for (size_t i = 0; i < n; i += 3) {
+        uint32_t v = (uint32_t)in[i] << 16 | (i + 1 < n ? (uint32_t)in[i + 1] << 8 : 0) | (i + 2 < n ? in[i + 2] : 0);
+        out[o++] = B64[v >> 18 & 63];
+        out[o++] = B64[v >> 12 & 63];
+        out[o++] = i + 1 < n ? B64[v >> 6 & 63] : '=';
+        out[o++] = i + 2 < n ? B64[v & 63] : '=';
+    }
+    out[o] = 0;
+    return o;
+}

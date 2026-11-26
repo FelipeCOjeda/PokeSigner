@@ -480,11 +480,61 @@ static void pass_device(char *out, size_t cap) {
     }
 }
 
+// Import through the installer's virtual keyboard. Chosen ON THE DEVICE (the
+// computer cannot switch to this mode by itself). Prompts carry @@ markers that
+// the installer page recognizes; typed text is never echoed (only '*').
+static int setup_seed_pc(seed_store_t *s) {
+    char line[400];
+    ui_msg("MODO PC", "Use o teclado virtual", "do instalador. BOOT=sair", C_YELLOW);
+    for (;;) {
+        int n, waits = 0;
+        do {
+            if (waits++ % 25 == 0)   // (re)print so a page that connects later still sees it
+                printf("\n@@SEEDPC@@ Digite as palavras (12 ou 24) no teclado virtual do instalador:\n> ");
+            n = read_line_t(line, sizeof(line), RL_MASK, 200);
+            if (n < 0 && ui_button_down()) { bs_wipe(line, sizeof(line)); return -1; }
+        } while (n < 0);
+        int r = bs_bip39_to_entropy(line, s->ent, &s->ent_len);
+        if (r) {
+            bs_wipe(line, sizeof(line));
+            printf("@@SEEDERR@@ Seed invalida (%s).\n", r == -2 ? "palavra desconhecida" : r == -3 ? "checksum" : "formato");
+            continue;
+        }
+        // let the user check, on the trusted screen, what actually arrived
+        char mn[400];
+        bs_bip39_from_entropy(s->ent, s->ent_len, mn, sizeof(mn));
+        bs_wipe(line, sizeof(line));
+        printf("@@SEEDOK@@ Confira as palavras NA TELA do dispositivo (avance com o botao).\n");
+        ui_seed_words(mn);
+        bs_wipe(mn, sizeof(mn));
+        static const char *const OK[2] = {"CONFERE", "REFAZER"};
+        if (ui_pick("AS PALAVRAS", "conferem com o papel?", OK, 2, 0) != 0) continue;
+        printf("@@PASS@@ Passphrase BIP39 (vazio = nenhuma):\n> ");
+        read_line(s->pass, sizeof(s->pass), RL_MASK | RL_EMPTY);
+        if (s->pass[0]) {
+            printf("@@PASS2@@ Repita a passphrase:\n> ");
+            read_line(line, sizeof(line), RL_MASK | RL_EMPTY);
+            int same = !strcmp(line, s->pass);
+            bs_wipe(line, sizeof(line));
+            if (!same) { printf("@@SEEDERR@@ Passphrases diferentes. Recomecando.\n"); bs_wipe(s, sizeof(*s)); continue; }
+        }
+        printf("@@SEEDDONE@@\n");
+        return 0;
+    }
+}
+
 static void setup_seed_device(seed_store_t *s) {
     char mn[400];
     for (;;) {
-        static const char *const M[3] = {"GERAR", "DADOS", "IMPORTAR"};
-        int m = ui_pick("NOVA CARTEIRA", "Aperte: troca. Segure: escolhe.", M, 3, 0);
+        static const char *const M[4] = {"GERAR", "DADOS", "IMPORTAR", "VIA PC"};
+        int m = ui_pick("NOVA CARTEIRA", "Aperte: troca. Segure: escolhe.", M, 4, 0);
+        if (m == 3) {
+            if (setup_seed_pc(s)) continue;
+            if (seed_save(s)) { ui_msg("ERRO", "Falha ao gravar.", NULL, C_RED); vTaskDelay(pdMS_TO_TICKS(2000)); continue; }
+            ui_msg("PRONTO!", "Seed gravada no", "dispositivo.", C_GREEN);
+            vTaskDelay(pdMS_TO_TICKS(1200));
+            return;
+        }
         if (m <= 1) {
             uint8_t rolls[DICE_REC];
             int n = m == 1 ? dice_rolls(rolls) : 0;

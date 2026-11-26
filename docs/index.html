@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PokeSigner — Instalador</title>
-<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/press-start-2p@5/index.css">
+<script type="module" src="vendor/esp-web-tools/install-button.js"></script>
+<link rel="stylesheet" href="vendor/press-start-2p/font.css">
 <style>
   /* Visual inspirado em portateis 8-bit: carcaca amarela, moldura escura, tela lilas */
   :root { --body:#f6c90e; --body2:#e0b100; --bezel:#2b2b3a; --scr:#f8f8f8; --lav:#c8c0f0; --pur:#7060c0; --ink:#202040;
@@ -45,6 +45,14 @@
           font: 11px/1.7 "Press Start 2P", monospace; white-space: pre-wrap; word-break: break-word; }
   #cmd { flex: 1; min-width: 200px; background: #fff; color: var(--ink); border: 3px solid var(--ink); padding: 9px 10px;
          font: 11px "Press Start 2P", monospace; }
+  .vk { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+  .vk button { min-width:44px; min-height:44px; padding:0 10px; border-radius:8px; font-size:12px; background: var(--ink); box-shadow:0 3px 0 #000; }
+  .vk button.alt { background: var(--teal); box-shadow:0 3px 0 #0e6066; }
+  .sugg button { background: var(--green); box-shadow:0 3px 0 #1d6a29; text-transform:none; }
+  .vkcur { font: 14px "Press Start 2P", monospace; padding: 10px; border:3px solid var(--ink); background:#fff; min-height:22px; }
+  .vkwords { display:grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap:4px 12px; font: 12px ui-monospace, monospace; margin: 8px 0; }
+  .net { font: 10px "Press Start 2P", monospace; padding: 8px 10px; border:3px solid var(--ink); display:inline-block; }
+  .net.on { background:#fde8e8; color: var(--red); } .net.off { background:#e5f6e8; color: var(--green); }
   .status { font: 10px "Press Start 2P", monospace; } .status.on { color: var(--green); } .status.off { color: #777; }
   esp-web-install-button button { font-size: 12px; padding: 14px 22px; }
   #unsupported { display: none; }
@@ -65,7 +73,7 @@
     <span class="led"></span><span class="lbl px">POWER</span>
     <div class="screen">
       <h1 class="px">POKESIGNER</h1>
-      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.7.0.</p>
+      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.7.1.</p>
       <div class="demo"><img src="assets/signy-c6.gif" alt="Signy, o mascote do PokeSigner, comemorando uma assinatura" width="320"><img src="assets/signy-c3.gif" alt="PokeSigner na tela da ESP32-C3" width="192"></div>
     </div>
     <div class="brand px">SIGNER <b>COLOR</b></div>
@@ -111,6 +119,49 @@
       <li><b>PASSPHRASE:</b> nenhuma ou digitada nos botões, com revisão antes de gravar.</li>
     </ul>
 
+    <h3 class="px">IMPORTAR PELO COMPUTADOR (TECLADO VIRTUAL)</h3>
+    <p>Mais rápido que pelos botões. Use <b>só para importar</b> uma seed que você já tem; para criar uma nova, use GERAR ou DADOS na placa.</p>
+    <ol>
+      <li>Na placa, escolha <b>VIA PC</b> (a placa só aceita palavras do computador nesse modo, escolhido por você no dispositivo).</li>
+      <li>Clique em <b>Conectar</b> (abaixo, no terminal).</li>
+      <li><b>Desligue a internet</b> (Wi-Fi e cabo). Esta página continua funcionando sem internet.</li>
+      <li>Digite <b>clicando</b> no teclado virtual. As teclas mudam de lugar a cada palavra.</li>
+      <li>Clique em <b>Enviar para a placa</b> e confira as palavras na tela da placa.</li>
+    </ol>
+    <p><span id="netBadge" class="net on">INTERNET: ?</span> <span id="offBadge" class="muted"></span></p>
+    <div class="warn">O teclado virtual protege contra <b>keyloggers</b> (programas que gravam o teclado), mas não contra um computador já infectado que grave a tela ou leia esta página. Para máxima segurança use um computador sem internet ou um sistema “live” (ex.: Tails) iniciado de um pendrive.</div>
+    <div class="row">
+      <label><input type="radio" name="vkmode" value="w" checked> por letras</label>
+      <label><input type="radio" name="vkmode" value="n"> pelo número (1–2048)</label>
+      <label><input type="radio" name="vkcount" value="12"> 12 palavras</label>
+      <label><input type="radio" name="vkcount" value="24" checked> 24 palavras</label>
+      <label class="muted"><input type="checkbox" id="vkShow"> mostrar palavras</label>
+    </div>
+    <div id="vkCur" class="vkcur"></div>
+    <div id="vkSugg" class="vk sugg"></div>
+    <div id="vkKeys" class="vk"></div>
+    <div class="row">
+      <button class="dark" id="vkBack">Apagar</button>
+      <button class="dark" id="vkUndo">Desfazer palavra</button>
+      <button class="dark" id="vkClear">Limpar tudo</button>
+      <span id="vkCheck" class="muted"></span>
+    </div>
+    <div id="vkWords" class="vkwords"></div>
+
+    <h3 class="px">PASSPHRASE (OPCIONAL)</h3>
+    <div id="vpCur" class="vkcur"></div>
+    <div id="vpKeys" class="vk"></div>
+    <div class="row">
+      <button class="sec" id="vpShift">ABC</button>
+      <button class="dark" id="vpBack">Apagar</button>
+      <button class="dark" id="vpClear">Limpar</button>
+      <label class="muted"><input type="checkbox" id="vpShow"> mostrar</label>
+    </div>
+    <div class="row">
+      <button id="vkSend" disabled>Enviar para a placa</button>
+      <span id="vkState" class="muted">Escolha VIA PC na placa e conecte.</span>
+    </div>
+
     <h3 class="px">TERMINAL (OPCIONAL)</h3>
     <p class="muted">Só para diagnóstico: info, girar a tela, potência e teste do Bluetooth. Clique em <b>Conectar</b> com a placa no cabo.</p>
     <div class="row">
@@ -145,11 +196,12 @@
       <li>Para assinar: revise as páginas na tela com <b>BOOT</b> (ou pelo celular). Na última aparece um <b>código de 6 dígitos</b>: digite no celular ou <b>segure BOOT 2 s</b> para aprovar. Toque rápido rejeita.</li>
       <li>Se a imagem da placa ficar de cabeça para baixo ou espelhada, use o atalho <b>girar tela</b> até ficar certa.</li>
     </ol>
-    <p class="muted">Este instalador roda inteiro no seu navegador. Nenhum dado digitado é enviado para a internet; a única coisa baixada é a biblioteca de gravação (esp-web-tools).</p>
+    <p class="muted">Este instalador roda inteiro no seu navegador e não usa nenhum serviço externo: a biblioteca de gravação (esp-web-tools) e a fonte vêm junto com a página. Depois da primeira visita ele funciona sem internet.</p>
   </div>
   <div class="grille"><i></i><i></i><i></i><i></i></div>
 </main>
 
+<script src="bip39-en.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -175,7 +227,12 @@
   setBoard(saved);
 
   const MAX = 200000;
+  let raw = "";
+  const seedHooks = [];
   function print(text) {
+    raw = (raw + text).slice(-4000);
+    for (const h of seedHooks.splice(0)) if (!h(raw)) seedHooks.push(h);
+    text = text.replace(/@@[A-Z0-9]+@@ ?/g, "");
     // handle the firmware's "clear screen" escape and strip other ANSI codes
     const parts = text.split("\x1b[2J");
     if (parts.length > 1) { term.textContent = ""; text = parts[parts.length - 1]; }
@@ -198,6 +255,7 @@
     status.className = "status " + (on ? "on" : "off");
     for (const el of [cmd, $("btnSend"), $("btnReset"), $("btnMenu"), ...document.querySelectorAll(".quick")]) el.disabled = !on;
     $("btnConnect").textContent = on ? "Desconectar" : "Conectar";
+    vkUpdate();
   }
 
   function applyMask() { cmd.type = mask.checked ? "password" : "text"; }
@@ -267,6 +325,123 @@
     // the firmware ignores DTR/RTS resets on purpose (security); ask for the physical button
     wantReconnect = true;
     print("\n[aperte o botão RESET da placa — a página reconecta sozinha]\n");
+  }
+
+  /* ---------------- virtual keyboard (clicks only, keys shuffled) ---------------- */
+  const W = window.BIP39_WORDS || [];
+  const rnd = (n) => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; };
+  const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = rnd(i + 1); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+  const vk = { words: [], cur: "", order: null, pass: "", shift: false, porder: null, busy: false };
+  const mode = () => document.querySelector("input[name=vkmode]:checked").value;
+  const count = () => +document.querySelector("input[name=vkcount]:checked").value;
+  function el(tag, cls, txt, fn) { const b = document.createElement(tag); if (cls) b.className = cls; b.textContent = txt; if (fn) b.onclick = fn; return b; }
+
+  async function checksumOk(words) {
+    if (words.length !== 12 && words.length !== 24) return false;
+    let bits = "";
+    for (const w of words) { const i = W.indexOf(w); if (i < 0) return false; bits += i.toString(2).padStart(11, "0"); }
+    const cs = words.length / 3, entBits = bits.slice(0, bits.length - cs);
+    const ent = new Uint8Array(entBits.length / 8);
+    for (let i = 0; i < ent.length; i++) ent[i] = parseInt(entBits.slice(i * 8, i * 8 + 8), 2);
+    const h = new Uint8Array(await crypto.subtle.digest("SHA-256", ent));
+    const hb = Array.from(h, b => b.toString(2).padStart(8, "0")).join("");
+    ent.fill(0);
+    return hb.slice(0, cs) === bits.slice(-cs);
+  }
+
+  function addWord(w) { if (vk.words.length < count()) vk.words.push(w); vk.cur = ""; vk.order = null; vkRender(); }
+
+  function vkRender() {
+    const n = vk.words.length, full = n >= count(), show = $("vkShow").checked;
+    const keys = $("vkKeys"), sugg = $("vkSugg");
+    keys.textContent = ""; sugg.textContent = "";
+    if (full) $("vkCur").textContent = "PRONTO (" + n + " palavras)";
+    else if (mode() === "n") {
+      const v = vk.cur ? +vk.cur : 0;
+      $("vkCur").textContent = "Palavra " + (n + 1) + "/" + count() + ": nº " + (show ? vk.cur : "•".repeat(vk.cur.length)) + "_";
+      if (!vk.order) vk.order = shuffle(["0","1","2","3","4","5","6","7","8","9"]);
+      for (const d of vk.order) keys.appendChild(el("button", "", d, () => { if (vk.cur.length < 4 && +(vk.cur + d) <= 2048) { vk.cur += d; vkRender(); } }));
+      if (v >= 1 && v <= 2048) sugg.appendChild(el("button", "", "OK: nº " + v + (show ? " = " + W[v - 1] : ""), () => addWord(W[v - 1])));
+    } else {
+      $("vkCur").textContent = "Palavra " + (n + 1) + "/" + count() + ": " + (show ? vk.cur : "•".repeat(vk.cur.length)) + "_";
+      const cand = W.filter(w => w.startsWith(vk.cur));
+      const letters = new Set(cand.filter(w => w.length > vk.cur.length).map(w => w[vk.cur.length]));
+      if (!vk.order) vk.order = shuffle("abcdefghijklmnopqrstuvwxyz".split(""));
+      for (const c of vk.order) if (letters.has(c)) keys.appendChild(el("button", "", c, () => { vk.cur += c; vkRender(); }));
+      if (vk.cur && cand.length <= 8) for (const w of cand) sugg.appendChild(el("button", "", show ? w : w.slice(0, vk.cur.length) + "…", () => addWord(w)));
+    }
+    const list = $("vkWords"); list.textContent = "";
+    vk.words.forEach((w, i) => list.appendChild(el("div", "", (i + 1) + ". " + (show ? w + " (" + (W.indexOf(w) + 1) + ")" : "••••••"))));
+    if (full) checksumOk(vk.words).then(ok => { vk.ok = ok; $("vkCheck").textContent = ok ? "checksum OK" : "checksum ERRADO: confira as palavras"; vkUpdate(); });
+    else { vk.ok = false; $("vkCheck").textContent = ""; vkUpdate(); }
+  }
+
+  const PSETS = { a: "abcdefghijklmnopqrstuvwxyz", A: "ABCDEFGHIJKLMNOPQRSTUVWXYZ", d: "0123456789.-_:!@#$%&*?/+=,;() " };
+  function vpRender() {
+    $("vpCur").textContent = ($("vpShow").checked ? vk.pass : "•".repeat(vk.pass.length)) + "_";
+    const keys = $("vpKeys"); keys.textContent = "";
+    if (!vk.porder) vk.porder = shuffle(((vk.shift ? PSETS.A : PSETS.a) + PSETS.d).split(""));
+    for (const c of vk.porder) keys.appendChild(el("button", c === " " ? "alt" : "", c === " " ? "espaço" : c, () => { if (vk.pass.length < 256) { vk.pass += c; vk.porder = null; vpRender(); } }));
+    $("vpShift").textContent = vk.shift ? "abc" : "ABC";
+  }
+
+  function vkUpdate() {
+    const ready = !!writer && vk.ok && !vk.busy;
+    $("vkSend").disabled = !ready;
+  }
+
+  function waitFor(re, ms) {
+    return new Promise((res, rej) => {
+      const t = setTimeout(() => rej(new Error("a placa não respondeu")), ms);
+      seedHooks.push((buf) => { const m = buf.match(re); if (m) { clearTimeout(t); raw = ""; res(m[0]); return true; } return false; });
+    });
+  }
+
+  function vkWipe() { vk.words = []; vk.cur = ""; vk.pass = ""; vk.order = null; vk.porder = null; vk.ok = false; vkRender(); vpRender(); }
+
+  $("vkSend").onclick = async () => {
+    const st = $("vkState");
+    if (!/@@SEEDPC@@/.test(raw)) { st.textContent = "A placa não está no modo VIA PC. Escolha VIA PC na placa (ou aperte o botão da placa para mostrar o pedido de novo)."; return; }
+    vk.busy = true; vkUpdate();
+    try {
+      raw = "";
+      await send(vk.words.join(" "));
+      const r = await waitFor(/@@SEED(OK|ERR)@@/, 10000);
+      if (r.includes("ERR")) throw new Error("a placa recusou a seed");
+      st.textContent = "Confira as palavras NA TELA DA PLACA e escolha CONFERE nela.";
+      await waitFor(/@@PASS@@/, 600000);
+      await send(vk.pass);
+      if (vk.pass) { await waitFor(/@@PASS2@@/, 10000); await send(vk.pass); }
+      await waitFor(/@@SEEDDONE@@/, 10000);
+      st.textContent = "Seed gravada na placa. Os dados digitados foram apagados desta página.";
+      vkWipe();
+    } catch (e) {
+      st.textContent = "Não concluído: " + e.message + ". Escolha VIA PC na placa de novo se preciso.";
+    } finally { vk.busy = false; vkUpdate(); }
+  };
+  $("vkBack").onclick = () => { vk.cur = vk.cur.slice(0, -1); vkRender(); };
+  $("vkUndo").onclick = () => { vk.words.pop(); vk.cur = ""; vk.order = null; vkRender(); };
+  $("vkClear").onclick = () => { vk.words = []; vk.cur = ""; vk.order = null; vkRender(); };
+  $("vkShow").onchange = vkRender;
+  document.querySelectorAll("input[name=vkmode],input[name=vkcount]").forEach(r => r.onchange = () => { vk.cur = ""; vk.order = null; if (vk.words.length > count()) vk.words.length = count(); vkRender(); });
+  $("vpShift").onclick = () => { vk.shift = !vk.shift; vk.porder = null; vpRender(); };
+  $("vpBack").onclick = () => { vk.pass = vk.pass.slice(0, -1); vpRender(); };
+  $("vpClear").onclick = () => { vk.pass = ""; vpRender(); };
+  $("vpShow").onchange = vpRender;
+  window.addEventListener("pagehide", vkWipe);
+  vkRender(); vpRender();
+
+  /* ---------------- offline ---------------- */
+  function netBadge() {
+    const on = navigator.onLine, b = $("netBadge");
+    b.textContent = on ? "INTERNET: LIGADA — desligue antes de digitar" : "INTERNET: DESLIGADA ✓";
+    b.className = "net " + (on ? "on" : "off");
+  }
+  addEventListener("online", netBadge); addEventListener("offline", netBadge); netBadge();
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then(() => {
+      $("offBadge").textContent = "Esta página já fica guardada no navegador: funciona sem internet, inclusive a gravação do firmware.";
+    }).catch(() => {});
   }
 
   $("btnConnect").onclick = () => (port ? disconnect() : connect());

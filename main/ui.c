@@ -83,6 +83,8 @@ static int wait_input(int hold_ms, int timeout_ms, int (*abort_cb)(void), remote
     }
 }
 
+int ui_button_down(void) { return pressed_main() || pressed_rej(); }
+
 int ui_wait_button(int hold_ms, int timeout_ms, int (*abort_cb)(void)) {
     int r = wait_input(hold_ms, timeout_ms, abort_cb, NULL);
     return r == BTN_REJECT ? BTN_SHORT : r;

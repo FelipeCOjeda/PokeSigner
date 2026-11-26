@@ -1,6 +1,6 @@
 {
   "name": "PokeSigner (ESP32-C3)",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "new_install_prompt_erase": true,
   "builds": [
     { "chipFamily": "ESP32-C3", "parts": [{ "path": "pokesigner-esp32c3.bin", "offset": 0 }] }

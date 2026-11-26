@@ -22,6 +22,7 @@ int  ui_has_display(void);
 
 // Waits for a press. BTN_LONG if held >= hold_ms. abort_cb may be NULL.
 int  ui_wait_button(int hold_ms, int timeout_ms, int (*abort_cb)(void));
+int  ui_button_down(void);   // any button currently pressed
 
 typedef enum { UI_ADV, UI_CONNECTED, UI_SECURE } ui_link_t;
 void ui_set_identity(const char *name, uint32_t fingerprint);

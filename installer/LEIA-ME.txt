@@ -1,7 +1,8 @@
 POKESIGNER - INSTALADOR PLUG AND PLAY
 =====================================
 
-Placas: Waveshare ESP32-C6-LCD-1.47 ou Spotpear ESP32-C3 LCD 1.44 (escolha na pagina)
+Placas: Waveshare ESP32-C6-LCD-1.47, Spotpear ESP32-C3 LCD 1.44 ou LilyGO T-Display 1.14 (escolha na pagina)
+Funciona sem internet: tudo (biblioteca de gravacao, fonte, firmware) vem nesta pasta.
 Navegador: Google Chrome ou Microsoft Edge (no computador)
 
 COMO USAR
@@ -13,8 +14,9 @@ COMO USAR
      Linux   : ./Instalar-Linux.sh
 3. Na pagina que abrir:
      Passo 1 - "Instalar PokeSigner" -> escolha "USB JTAG/serial debug unit"
-     Passo 2 - "Conectar" -> "Mostrar menu" -> "g" para gerar a seed
-               (as palavras aparecem SO na tela da placa)
+     Passo 2 - configure a seed NA PLACA (GERAR, DADOS ou IMPORTAR pelos botoes),
+               ou escolha VIA PC na placa e use o teclado virtual da pagina
+               (desligue a internet antes de digitar)
      Passo 3 - parear com o celular usando o codigo de 6 digitos da tela
 
 ALTERNATIVA SEM INSTALAR NADA

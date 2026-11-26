@@ -308,7 +308,7 @@ void ui_idle(ui_link_t link) {
     char b1[24], b2[24];
     lay_begin();
     box_t *b = lay_box(); b->fill = 1;
-    L_pair(b, P_PURPLE, "POKESIGNER", P_LAV, TW >= 16 ? "v0.6.3" : "");
+    L_pair(b, P_PURPLE, "POKESIGNER", P_LAV, TW >= 16 ? "v" FW_VERSION : "");
     L_blank(b);
     snprintf(b1, sizeof(b1), "ID  %08" PRIX32, s_fp);
     L_text(b, P_INK, b1);
@@ -377,7 +377,7 @@ void ui_celebrate(const char *l1, const char *l2) {
     s_modal = 1;   // keep BLE status changes from redrawing the idle screen mid-animation
     int top = msg_draw("PSBT ASSINADO!", l1, l2, C_GREEN);
     // fit mascot + jump + sparkle margin above the dialog box
-    int avail = top * 8 * TSC - 4, sc = CELEB_SC, sw, jump, pad;
+    int avail = top * TPX - 4, sc = CELEB_SC, sw, jump, pad;
     for (;;) {
         sw = 16 * sc; jump = 3 * sc; pad = 3 * sc;
         if (sw + jump + pad <= avail || sc == 1) break;

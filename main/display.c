@@ -27,7 +27,7 @@
 
 #define W LCD_W
 #define H LCD_H
-#define ROWPX (8 * TSC)            // pixel height of one grid row
+#define ROWPX TPX                  // pixel height of one grid row
 
 extern const uint8_t FONT8X8[95][8];
 
@@ -110,16 +110,16 @@ static void push(int y, int h) {
 
 /* ------------------------------------------------------------ rendering */
 
-// Draws `rows` pixel rows of a tile (at scale sc) into band b at x, starting at
-// tile pixel row ysub (in scaled pixels).
-static void put_tile(uint16_t *b, int x, unsigned char c, int sc, uint16_t fg, uint16_t bg, int ysub, int rows) {
+// Draws `rows` pixel rows of a tile scaled to sz x sz pixels (sz = 8 * scale; any
+// size, e.g. 12 = 1.5x) into band b at x, starting at tile pixel row ysub.
+static void put_tile(uint16_t *b, int x, unsigned char c, int sz, uint16_t fg, uint16_t bg, int ysub, int rows) {
     const uint8_t *g = glyph(c);
     for (int py = 0; py < rows; py++) {
-        int gy = (py + ysub) / sc;
+        int gy = (py + ysub) * 8 / sz;
         uint8_t bits = gy < 8 ? g[gy] : 0;
         uint16_t *row = b + py * W;
-        for (int px = 0; px < 8 * sc && x + px < W; px++)
-            row[x + px] = (bits & (0x80 >> (px / sc))) ? fg : bg;
+        for (int px = 0; px < sz && x + px < W; px++)
+            row[x + px] = (bits & (0x80 >> (px * 8 / sz))) ? fg : bg;
     }
 }
 
@@ -145,13 +145,13 @@ void disp_grid(const grid_t *g) {
             int rr = r + sub;
             for (int c = 0; c < GW; c++) {
                 if (big && c > 0 && c < GW - 1) continue;
-                put_tile(b, c * ROWPX, (unsigned char)g->ch[rr][c], TSC,
+                put_tile(b, c * ROWPX, (unsigned char)g->ch[rr][c], TPX,
                          sw(PAL[g->fg[rr][c]]), sw(PAL[g->bg[rr][c]]), 0, ROWPX);
             }
             if (big) {
                 // interior: text at BIGSC, centered between the two border columns
                 uint16_t bg = sw(PAL[g->bg[r][1]]), fg = sw(PAL[g->fg[r][1]]);
-                int inner = W - 2 * ROWPX, cw = 8 * BIGSC;
+                int inner = W - 2 * ROWPX, cw = BIGPX;
                 for (int y = 0; y < ROWPX; y++)
                     for (int x = ROWPX; x < W - ROWPX; x++) b[y * W + x] = bg;
                 char t[GW + 1]; int n = 0;
@@ -161,7 +161,7 @@ void disp_grid(const grid_t *g) {
                 int len = n - s; if (len > inner / cw) len = inner / cw;
                 int x0 = ROWPX + (inner - len * cw) / 2;
                 for (int k = 0; k < len; k++)
-                    put_tile(b, x0 + k * cw, (unsigned char)t[s + k], BIGSC, fg, bg, sub * ROWPX, ROWPX);
+                    put_tile(b, x0 + k * cw, (unsigned char)t[s + k], BIGPX, fg, bg, sub * ROWPX, ROWPX);
             }
             push(TOPM + rr * ROWPX, ROWPX);
         }
@@ -201,7 +201,7 @@ void disp_sprite(const char *const rows[16], int bx, int by, int bw, int bh,
         uint16_t dot = sw(PAL[P_PURPLE]);
         for (int y = 0; y < bh; y++)
             for (int x = 0; x < bw; x++) {
-                int ty = ((by + y - TOPM) / TSC) & 7, tx = ((bx + x) / TSC) & 7;
+                int ty = ((by + y - TOPM) * 8 / TPX) & 7, tx = ((bx + x) * 8 / TPX) & 7;
                 if (TILES[0x12][ty] & (0x80 >> tx)) buf[y * bw + x] = dot;
             }
     }
@@ -262,7 +262,12 @@ void disp_set_orientation(uint8_t o) {
     static const bool MX[4] = {true, false, false, true}, MY[4] = {false, true, false, true};
     esp_lcd_panel_swap_xy(s_panel, true);
     esp_lcd_panel_mirror(s_panel, MX[o], MY[o]);
+#if CONFIG_PS_BOARD_TDISPLAY_114
+    // 135 px on a 240 px axis: offset is 52 or 53 depending on the column order
+    esp_lcd_panel_set_gap(s_panel, CONFIG_PS_LCD_Y_GAP, CONFIG_PS_LCD_X_GAP + (MX[o] ? 1 : 0));
+#else
     esp_lcd_panel_set_gap(s_panel, CONFIG_PS_LCD_Y_GAP, CONFIG_PS_LCD_X_GAP);
+#endif
 #endif
 }
 

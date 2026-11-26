@@ -14,3 +14,6 @@ sdkconfig.c3
 sdkconfig.c3.old
 host_test/t_screens*
 !host_test/t_screens.c
+build_esp32/
+sdkconfig.esp32
+sdkconfig.esp32.old

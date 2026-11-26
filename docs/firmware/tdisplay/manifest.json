@@ -1,0 +1,8 @@
+{
+  "name": "PokeSigner (LilyGO T-Display ESP32)",
+  "version": "0.6.5",
+  "new_install_prompt_erase": true,
+  "builds": [
+    { "chipFamily": "ESP32", "parts": [{ "path": "pokesigner-tdisplay.bin", "offset": 0 }] }
+  ]
+}

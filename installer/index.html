@@ -65,7 +65,7 @@
     <span class="led"></span><span class="lbl px">POWER</span>
     <div class="screen">
       <h1 class="px">POKESIGNER</h1>
-      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.6.4.</p>
+      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.6.5.</p>
       <div class="demo"><img src="assets/signy-c6.gif" alt="Signy, o mascote do PokeSigner, comemorando uma assinatura" width="320"><img src="assets/signy-c3.gif" alt="PokeSigner na tela da ESP32-C3" width="192"></div>
     </div>
     <div class="brand px">SIGNER <b>COLOR</b></div>
@@ -80,7 +80,7 @@
     <h2 class="px"><span class="n">&#9654;</span> 1. GRAVAR FIRMWARE</h2>
     <ol>
       <li>Ligue a placa no computador pelo cabo USB-C (precisa ser um cabo de <b>dados</b>).</li>
-      <li>Escolha a sua placa abaixo, clique em <b>Instalar</b> e escolha a porta <i>“USB JTAG/serial debug unit”</i>.</li>
+      <li>Escolha a sua placa abaixo, clique em <b>Instalar</b> e escolha a porta <i>“USB JTAG/serial debug unit”</i> (C6/C3) ou <i>“USB Single Serial”/CH9102/CP2104</i> (T-Display).</li>
       <li>Aceite apagar a memória. A gravação leva cerca de 1 minuto.</li>
     </ol>
     <div class="boards">
@@ -88,6 +88,8 @@
         <span><b class="px">ESP32-C6</b><br>Waveshare ESP32-C6-LCD-1.47<br><small>tela 1,47" 172×320 · botão BOOT</small></span></label>
       <label class="board"><input type="radio" name="board" value="c3">
         <span><b class="px">ESP32-C3</b><br>Spotpear ESP32-C3 LCD 1.44<br><small>tela 1,44" 128×128 · 3 botões</small></span></label>
+      <label class="board"><input type="radio" name="board" value="tdisplay">
+        <span><b class="px">ESP32</b><br>LilyGO T-Display 1.14<br><small>tela 1,14" 240×135 · 2 botões</small></span></label>
     </div>
     <p class="muted" id="boardHint"></p>
     <esp-web-install-button id="installBtn" manifest="firmware/c6/manifest.json">
@@ -156,6 +158,7 @@
 
   const HINTS = {
     c6: "ESP32-C6: aprovar = segurar BOOT 2 s (ou o código no celular).",
+    tdisplay: "T-Display: um botão (GPIO35) avança; o outro (GPIO0) avança e, segurado 2 s na última tela, aprova. O código no celular também aprova.",
     c3: "ESP32-C3: dois botões (BOOT/GPIO9 e GPIO8) avançam e, segurados 2 s na última tela, aprovam; o terceiro (GPIO10) rejeita. O código no celular também aprova."
   };
   function setBoard(b) {
@@ -218,12 +221,14 @@
   }
 
   // Only list the board's own USB port (Espressif USB-Serial-JTAG), never Bluetooth/COM ports
-  const FILTERS = [{ usbVendorId: 0x303a }];
+  const FILTERS = [{ usbVendorId: 0x303a }, { usbVendorId: 0x1a86 }, { usbVendorId: 0x10c4 }];   // Espressif, CH9102/CH340 (T-Display), CP210x
   let wantReconnect = false;
 
   async function openPort(p) {
     port = p;
     await port.open({ baudRate: 115200 });
+    // USB-UART boards (T-Display): DTR/RTS drive EN/IO0, keep both released so the chip just runs
+    try { await port.setSignals({ dataTerminalReady: false, requestToSend: false }); } catch (_) {}
     writer = port.writable.getWriter();
     keepReading = true;
     setConnected(true);

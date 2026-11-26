@@ -37,12 +37,15 @@ Duas placas suportadas (o instalador pergunta qual é a sua):
 |---|---|---|
 | **Waveshare ESP32-C6-LCD-1.47** | ST7789 172×320 (MOSI 6, SCLK 7, CS 14, DC 15, RST 21, BL 22), grade 20×10 | BOOT (GPIO9) |
 | **Spotpear ESP32-C3 LCD 1.44** | ST7735S 128×128 (MOSI 4, SCLK 3, CS 2, DC 0, RST 5), grade 16×16 | BOOT (GPIO9) e GPIO8 avançam/aprovam; GPIO10 rejeita |
+| **LilyGO T-Display ESP32 1.14** | ST7789V 240×135 (MOSI 19, SCLK 18, CS 5, DC 16, RST 23, BL 4), grade 20×11 com fonte em 1,5× | GPIO35 avança; GPIO0 (BOOT) avança/aprova segurando 2 s |
 
 Compilar para cada uma:
 ```bash
 idf.py build                                                     # ESP32-C6 → build/
 idf.py -B build_c3 -D SDKCONFIG=sdkconfig.c3 set-target esp32c3  # 1ª vez
 idf.py -B build_c3 -D SDKCONFIG=sdkconfig.c3 build               # ESP32-C3 → build_c3/
+idf.py -B build_esp32 -D SDKCONFIG=sdkconfig.esp32 set-target esp32  # 1ª vez (T-Display)
+idf.py -B build_esp32 -D SDKCONFIG=sdkconfig.esp32 build         # ESP32 T-Display → build_esp32/
 ```
 
 - Outras placas ESP32-C6: desative a tela em `idf.py menuconfig` → *PokeSigner* (aí tudo vai pelo serial).

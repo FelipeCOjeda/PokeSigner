@@ -1,3 +1,4 @@
+#include <stdlib.h>
 // BLE transport: NimBLE peripheral, one GATT service with RX (write) and TX
 // (notify) characteristics. LE Secure Connections + MITM (passkey shown on the
 // USB serial console) are required before any write is accepted.
@@ -38,7 +39,7 @@ static uint16_t s_mtu = 23;
 static uint8_t s_own_addr_type;
 static char s_name[32];
 
-static uint8_t s_rx[PROTO_MAX_PAYLOAD];
+static uint8_t *s_rx;   // PROTO_MAX_PAYLOAD bytes, on the heap (classic ESP32 has little static DRAM)
 static uint8_t s_hdr[5];
 static size_t s_hdr_len, s_rx_len, s_rx_expect;
 static volatile int s_busy;
@@ -321,6 +322,8 @@ static void host_task(void *arg) {
 void ble_start(const char *name, ble_request_cb cb, ble_request_cb control_cb) {
     s_cb = cb; s_ctrl_cb = control_cb;
     strncpy(s_name, name, sizeof(s_name) - 1);
+    if (!s_rx) s_rx = malloc(PROTO_MAX_PAYLOAD);
+    if (!s_rx) { printf("[BLE] ERRO: sem memoria para o buffer\n"); return; }
     esp_err_t e = nimble_port_init();
     if (e != ESP_OK) { printf("[BLE] ERRO ao iniciar o Bluetooth: %s\n", esp_err_to_name(e)); return; }
     ble_hs_cfg.sync_cb = on_sync;

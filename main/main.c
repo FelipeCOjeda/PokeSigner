@@ -1,4 +1,4 @@
-// PokeSigner — BLE PSBT signer for ESP32-C6 / ESP32-C3 boards with a screen.
+// PokeSigner — BLE PSBT signer for ESP32-C6 / ESP32-C3 / ESP32 boards with a screen.
 // Seed setup and confirmations happen on the device (USB serial + BOOT button);
 // the phone only sends PSBTs and receives signatures over an authenticated
 // BLE link.
@@ -14,10 +14,19 @@
 #include "esp_timer.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include "bootloader_random.h"
+#include "soc/soc_caps.h"
+#if SOC_USB_SERIAL_JTAG_SUPPORTED
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_vfs.h"
-#include "bootloader_random.h"
 #include "soc/usb_serial_jtag_struct.h"
+#define CON_USB 1
+#else
+// boards with a USB-UART bridge chip (e.g. ESP32 T-Display, CH9102): console on UART0
+#include "driver/uart.h"
+#include "driver/uart_vfs.h"
+#define CON_USB 0
+#endif
 
 #include "bs_signer.h"
 #include "bs_bip39.h"
@@ -27,7 +36,6 @@
 #include "display.h"
 #include "board.h"
 
-#define FW_VERSION      "0.6.4"
 #define APPROVE_HOLD_MS 2000
 #define CONFIRM_TIMEOUT_MS 120000
 #define NVS_NS          "pokesigner"
@@ -39,6 +47,7 @@ void bs_platform_random(uint8_t *buf, size_t len) { esp_fill_random(buf, len); }
 static void console_init(void) {
     // The host must not be able to reset (or reboot into download mode) a
     // running signer by toggling DTR/RTS. Firmware updates use BOOT+RESET.
+#if CON_USB
 #if CONFIG_IDF_TARGET_ESP32C6
     USB_SERIAL_JTAG.chip_rst.usb_uart_chip_rst_dis = 1;   // (the C3 has no such switch)
 #endif
@@ -47,6 +56,11 @@ static void console_init(void) {
     cfg.tx_buffer_size = 1024;
     ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&cfg));
     usb_serial_jtag_vfs_use_driver();   // stdout goes through the driver
+#else
+    // (a USB-UART bridge resets the chip on DTR/RTS; the web console keeps them low)
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 1024, 1024, 0, NULL, 0));
+    uart_vfs_dev_use_driver(UART_NUM_0);
+#endif
     setvbuf(stdout, NULL, _IONBF, 0);
 }
 
@@ -54,7 +68,11 @@ static void console_init(void) {
 static int con_getc(int timeout_ms) {
     uint8_t c;
     TickType_t t = timeout_ms < 0 ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
+#if CON_USB
     return usb_serial_jtag_read_bytes(&c, 1, t) == 1 ? c : -1;
+#else
+    return uart_read_bytes(UART_NUM_0, &c, 1, t) == 1 ? c : -1;
+#endif
 }
 
 #define RL_MASK  1   // echo '*'

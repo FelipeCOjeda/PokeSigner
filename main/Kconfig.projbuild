@@ -3,6 +3,7 @@ menu "PokeSigner"
 choice PS_BOARD
     prompt "Placa"
     default PS_BOARD_C3_SPOTPEAR_144 if IDF_TARGET_ESP32C3
+    default PS_BOARD_TDISPLAY_114 if IDF_TARGET_ESP32
     default PS_BOARD_C6_WAVESHARE_147
 
 config PS_BOARD_C6_WAVESHARE_147
@@ -12,6 +13,10 @@ config PS_BOARD_C6_WAVESHARE_147
 config PS_BOARD_C3_SPOTPEAR_144
     bool "Spotpear ESP32-C3 LCD 1.44 (ST7735 128x128)"
     depends on IDF_TARGET_ESP32C3
+
+config PS_BOARD_TDISPLAY_114
+    bool "LilyGO T-Display ESP32 1.14 (ST7789V 135x240)"
+    depends on IDF_TARGET_ESP32
 endchoice
 
 config PS_REJECT_GPIO
@@ -22,10 +27,12 @@ config PS_REJECT_GPIO
 config PS_NEXT_GPIO
     int "GPIO de um botao extra de avancar (-1 = nenhum)"
     default 8 if PS_BOARD_C3_SPOTPEAR_144
+    default 35 if PS_BOARD_TDISPLAY_114
     default -1
 
 config PS_BUTTON_GPIO
     int "GPIO do botao de confirmacao (BOOT)"
+    default 0 if PS_BOARD_TDISPLAY_114
     default 9
 
 config PS_DISPLAY_ST7789
@@ -35,39 +42,49 @@ config PS_DISPLAY_ST7789
 if PS_DISPLAY_ST7789
 config PS_LCD_MOSI
     int "LCD MOSI"
+    default 19 if PS_BOARD_TDISPLAY_114
     default 4 if PS_BOARD_C3_SPOTPEAR_144
     default 6
 config PS_LCD_SCLK
     int "LCD SCLK"
+    default 18 if PS_BOARD_TDISPLAY_114
     default 3 if PS_BOARD_C3_SPOTPEAR_144
     default 7
 config PS_LCD_CS
     int "LCD CS"
+    default 5 if PS_BOARD_TDISPLAY_114
     default 2 if PS_BOARD_C3_SPOTPEAR_144
     default 14
 config PS_LCD_DC
     int "LCD DC"
+    default 16 if PS_BOARD_TDISPLAY_114
     default 0 if PS_BOARD_C3_SPOTPEAR_144
     default 15
 config PS_LCD_RST
     int "LCD RST"
+    default 23 if PS_BOARD_TDISPLAY_114
     default 5 if PS_BOARD_C3_SPOTPEAR_144
     default 21
 config PS_LCD_BL
     int "LCD backlight (-1 = sempre ligado)"
+    default 4 if PS_BOARD_TDISPLAY_114
     default -1 if PS_BOARD_C3_SPOTPEAR_144
     default 22
 config PS_LCD_WIDTH
     int "Largura (px)"
+    default 135 if PS_BOARD_TDISPLAY_114
     default 172
 config PS_LCD_HEIGHT
     int "Altura (px)"
+    default 240 if PS_BOARD_TDISPLAY_114
     default 320
 config PS_LCD_X_GAP
     int "Offset X do controlador"
+    default 52 if PS_BOARD_TDISPLAY_114
     default 34
 config PS_LCD_Y_GAP
     int "Offset Y do controlador"
+    default 40 if PS_BOARD_TDISPLAY_114
     default 0
 config PS_LCD_INVERT
     bool "Inverter cores (paineis IPS)"

@@ -30,6 +30,8 @@ void ui_refresh_idle(void);     // redraws idle screen unless a modal screen is 
 void ui_passkey(uint32_t code);
 void ui_msg(const char *title, const char *l1, const char *l2, uint16_t color);
 void ui_seed_words(const char *mnemonic);
+// Picker using only the device buttons (tap = next, hold = choose). Returns the chosen index.
+int  ui_pick(const char *title, const char *info, const char *const *opts, int n, int start);
 void ui_celebrate(const char *l1, const char *l2);   // mascot animation after signing   // pages through the words with BOOT
 
 // Paged review. 1 = approved, 0 = rejected, -1 = timeout/abort.

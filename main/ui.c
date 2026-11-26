@@ -5,6 +5,7 @@
 #include "ui.h"
 #include "display.h"
 #include "bs_encode.h"
+#include "bs_bip39.h"
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
@@ -431,7 +432,9 @@ void ui_seed_words(const char *mnemonic) {
         snprintf(t, sizeof(t), "SEED %d/%d", pg + 1, pages);
         L_pair(b, P_PURPLE, t, P_RED, "ANOTE!");
         for (int i = pg * per; i < n && i < pg * per + per; i++) {
-            snprintf(t, sizeof(t), "%2d %s", i + 1, words[i]);
+            int wi = bs_bip39_word_index(words[i], strlen(words[i]));
+            if (TW >= 16 && wi >= 0) snprintf(t, sizeof(t), "%2d %-9s%04d", i + 1, words[i], wi + 1);
+            else snprintf(t, sizeof(t), "%2d %s", i + 1, words[i]);
             L_text(b, P_INK, t);
         }
         strcpy(b->foot_r, T_DOWN);
@@ -443,7 +446,36 @@ void ui_seed_words(const char *mnemonic) {
     }
     memset(words, 0, sizeof(words));
     memset(&G, 0, sizeof(G));
-    ui_msg("CONFIRME", "Digite no computador", "as palavras pedidas.", C_YELLOW);
+}
+
+/* ------------------------------------------------------------ on-device picker */
+
+#define PICK_HOLD_MS 700
+
+// Option picker driven only by the device buttons: short press = next option,
+// hold ~0.7 s = choose, extra "reject" button (if any) = previous option.
+int ui_pick(const char *title, const char *info, const char *const *opts, int n, int start) {
+    if (!s_disp || n <= 0) return -1;
+    int idx = start >= 0 && start < n ? start : 0;
+    for (;;) {
+        lay_begin();
+        box_t *a = lay_box();
+        L_text(a, P_PURPLE, title);
+        if (info && info[0]) L_text(a, P_INK, info);
+        box_t *b = lay_box(); b->fill = 1;
+        if ((int)strlen(opts[idx]) <= TW / 2) L_big(b, P_INK, opts[idx]);
+        else { L_center(b, P_INK, opts[idx]); }
+        snprintf(b->foot_l, sizeof(b->foot_l), "%d/%d", idx + 1, n);
+        strcpy(b->foot_r, T_ARROW);
+        UI_LOCK();
+        lay_render();
+        UI_UNLOCK();
+        int r = wait_input(PICK_HOLD_MS, 0, NULL, NULL);
+        if (r == BTN_LONG) break;
+        idx = r == BTN_REJECT ? (idx + n - 1) % n : (idx + 1) % n;
+    }
+    memset(s_boxes, 0, sizeof(s_boxes));
+    return idx;
 }
 
 /* ------------------------------------------------------------ review */

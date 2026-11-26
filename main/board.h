@@ -59,4 +59,4 @@
 #define TW      (GW - 2)                 // text columns inside a box
 #define TOPM    ((LCD_H - GH * TPX) / 2)
 
-#define FW_VERSION "0.6.5"
+#define FW_VERSION "0.7.0"

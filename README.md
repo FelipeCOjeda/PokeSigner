@@ -13,7 +13,7 @@ Quer suportar o Signy na sua carteira? O protocolo completo, aberto e com exempl
 
 Pasta `installer/`: clique duas vezes em `Instalar-Windows.bat`, `Instalar-Mac.command`
 ou rode `Instalar-Linux.sh`. Abre uma página no Chrome/Edge que grava o firmware pela USB
-(Web Serial) e tem um terminal para configurar a seed. Detalhes em `installer/LEIA-ME.txt`.
+(Web Serial) e um terminal opcional de diagnóstico. Detalhes em `installer/LEIA-ME.txt`.
 A mesma pasta pode ser publicada no GitHub Pages para instalar só com um link.
 
 ## O que suporta
@@ -92,13 +92,21 @@ python -m esptool --chip esp32c3 write_flash 0x0 installer/firmware/c3/pokesigne
 
 ## Primeiro uso
 
-1. Abra o terminal do instalador (ou `idf.py monitor`) e aperte ENTER para ver o menu.
-2. Escolha `g` (gerar 24 palavras com TRNG + entropia digitada) ou `i` (importar).
-3. Se gerou: as palavras aparecem **só na tela da placa**; anote, avance com BOOT e confirme 2 palavras no terminal.
-4. Passphrase opcional (aceita o formato da PokeWallet, ex. `pokemon:74:Geodude`).
+A seed é configurada **só no dispositivo** (tela + botões); o computador não participa.
+Toque curto = próxima opção, segurar ~0,7 s = escolher (no C3 o GPIO10 volta uma opção).
+
+1. **GERAR**: 24 palavras do TRNG do chip, mostradas só na tela com o número BIP39 (1–2048);
+   depois você escolhe na tela 3 palavras pedidas (entre 4 opções).
+2. **DADOS**: informe lançamentos de um dado d6 (mín. 20, recomendado 99). Entropia =
+   SHA-256(TRNG ‖ dados ‖ tempo), a mesma receita da PokeWallet.
+3. **IMPORTAR**: 12/24 palavras pelo número na lista oficial (1–2048 = linha do `english.txt`) ou
+   letra a letra (só letras que formam palavras válidas); checksum validado, com correção.
+4. **PASSPHRASE**: nenhuma ou digitada nos botões (ex. `pokemon:74:Geodude`), com revisão.
 5. O dispositivo mostra o **fingerprint** e começa a anunciar `PokeSigner-XXXX`.
 
-Comandos no serial depois de iniciado: `info` (descritores), `unpair` (apaga
+Placas sem tela continuam com a configuração pelo terminal serial.
+
+Comandos no serial depois de iniciado: `info` (descritores), `scan`/`mac` (teste do Bluetooth), `potencia`, `unpair` (apaga
 pareamentos BLE), `wipe` (apaga seed + pareamentos; exige segurar BOOT 5 s).
 
 ## Pareamento BLE

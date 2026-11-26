@@ -65,7 +65,7 @@
     <span class="led"></span><span class="lbl px">POWER</span>
     <div class="screen">
       <h1 class="px">POKESIGNER</h1>
-      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.6.5.</p>
+      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.7.0.</p>
       <div class="demo"><img src="assets/signy-c6.gif" alt="Signy, o mascote do PokeSigner, comemorando uma assinatura" width="320"><img src="assets/signy-c3.gif" alt="PokeSigner na tela da ESP32-C3" width="192"></div>
     </div>
     <div class="brand px">SIGNER <b>COLOR</b></div>
@@ -101,8 +101,18 @@
   </div>
 
   <div class="card">
-    <h2 class="px"><span class="n">&#9654;</span> 2. CONFIGURAR SEED</h2>
-    <p>Depois de gravar, clique em <b>Conectar</b> (só aparece a porta da placa). O menu aparece no terminal em até 5 segundos.</p>
+    <h2 class="px"><span class="n">&#9654;</span> 2. CONFIGURAR SEED (NA PLACA)</h2>
+    <p>A seed é criada <b>só no dispositivo</b>, pela tela e pelos botões. O computador não vê nem digita palavras ou passphrase: depois de gravar, pode desconectar o cabo e ligar a placa em qualquer carregador USB.</p>
+    <ul>
+      <li><b>Botões:</b> aperto curto = próxima opção; <b>segurar ~0,7 s</b> = escolher. (C3: o botão GPIO10 volta uma opção.)</li>
+      <li><b>GERAR:</b> 24 palavras do gerador aleatório do chip, mostradas só na tela, com o número de cada uma na lista BIP39 (1–2048). Anote e depois escolha na tela 3 palavras pedidas.</li>
+      <li><b>DADOS:</b> jogue um dado comum e informe cada resultado (mínimo 20, recomendado 99). A seed é SHA-256(aleatório do chip + dados + tempo), igual à PokeWallet: os dados só somam entropia.</li>
+      <li><b>IMPORTAR:</b> 12 ou 24 palavras, digitadas pelo <b>número</b> da palavra na lista oficial BIP39 (1–2048, a linha do arquivo <code>english.txt</code>) ou letra por letra. A placa mostra a palavra para você conferir e valida o checksum no fim.</li>
+      <li><b>PASSPHRASE:</b> nenhuma ou digitada nos botões, com revisão antes de gravar.</li>
+    </ul>
+
+    <h3 class="px">TERMINAL (OPCIONAL)</h3>
+    <p class="muted">Só para diagnóstico: info, girar a tela, potência e teste do Bluetooth. Clique em <b>Conectar</b> com a placa no cabo.</p>
     <div class="row">
       <button id="btnConnect">Conectar</button>
       <button id="btnMenu" disabled>Mostrar menu</button>
@@ -118,20 +128,12 @@
     </div>
     <div class="row">
       <span class="muted">Atalhos:</span>
-      <button class="sec quick" data-v="g" disabled>g — gerar seed nova</button>
-      <button class="sec quick" data-v="i" disabled>i — importar seed</button>
       <button class="sec quick" data-v="info" disabled>info</button>
       <button class="sec quick" data-v="girar" disabled>girar tela</button>
       <button class="sec quick" data-v="potencia" disabled>potência BLE</button>
+      <button class="sec quick" data-v="scan" disabled>teste BLE</button>
+      <button class="sec quick" data-v="mac" disabled>endereço BLE</button>
       <button class="sec quick" data-v="unpair" disabled>unpair</button>
-    </div>
-    <div class="note">
-      <b>Gerar seed (recomendado):</b> as 24 palavras aparecem <b>só na tela da placa</b>, não no computador.
-      Anote em papel e avance com o botão BOOT. Depois confirme aqui as 2 palavras pedidas.
-    </div>
-    <div class="warn">
-      <b>Importar seed:</b> as palavras passam pelo teclado e pela tela deste computador. Só faça isso num computador confiável,
-      de preferência sem internet. A passphrase é digitada com <code>ocultar</code> ligado automaticamente.
     </div>
   </div>
 

@@ -160,9 +160,26 @@ static void seed_erase(void) {
 
 /* ------------------------------------------------------------ seed setup */
 
-static void gen_entropy(uint8_t out[32]) {
+// SHA-256(hardware RNG pool || extra || time). Same recipe as the PokeWallet dice
+// option: the extra input (dice) can only add entropy, never remove it.
+static void mix_entropy(uint8_t out[32], const uint8_t *extra, size_t n) {
     // True RNG needs an entropy source: enable the SAR ADC noise source while
     // the radio is still off, then whiten with SHA-256 over plenty of samples.
+    uint8_t pool[256];
+    bootloader_random_enable();
+    esp_fill_random(pool, sizeof(pool));
+    bootloader_random_disable();
+    int64_t t = esp_timer_get_time();
+    bs_sha256_ctx ctx;
+    bs_sha256_init(&ctx);
+    bs_sha256_update(&ctx, pool, sizeof(pool));
+    if (n) bs_sha256_update(&ctx, extra, n);
+    bs_sha256_update(&ctx, &t, sizeof(t));
+    bs_sha256_final(&ctx, out);
+    bs_wipe(pool, sizeof(pool)); bs_wipe(&ctx, sizeof(ctx));
+}
+
+static void gen_entropy(uint8_t out[32]) {   // serial-only boards (no screen)
     uint8_t pool[256];
     bootloader_random_enable();
     esp_fill_random(pool, sizeof(pool));
@@ -249,6 +266,250 @@ static void setup_seed(seed_store_t *s) {
         if (seed_save(s)) { printf("ERRO ao gravar na flash.\n"); continue; }
         bs_wipe(mn, sizeof(mn));
         printf("Seed gravada.\n");
+        return;
+    }
+}
+
+/* ------------------------------------------------------------ on-device setup */
+// Everything happens on the device screen and buttons: the computer never sees
+// or types the words or the passphrase.
+
+#define DICE_MIN 20
+#define DICE_REC 99
+
+static int dice_rolls(uint8_t *rolls) {
+    static const char *const F[6] = {"1", "2", "3", "4", "5", "6"};
+    int n = 0;
+    for (;;) {
+        const char *o[8]; int k = 0, undo = -1, fim = -1;
+        for (int i = 0; i < 6; i++) o[k++] = F[i];
+        if (n > 0) { undo = k; o[k++] = "DESFAZER"; }
+        if (n >= DICE_MIN) { fim = k; o[k++] = "FIM"; }
+        char title[24], info[48];
+        snprintf(title, sizeof(title), "DADO %d/%d", n + 1, DICE_REC);
+        if (n) snprintf(info, sizeof(info), "Ult:%d  %d bits", rolls[n - 1], n * 2585 / 1000);
+        else snprintf(info, sizeof(info), "Jogue o dado e escolha o numero.");
+        int r = ui_pick(title, info, o, k, 0);
+        if (r < 6) { rolls[n++] = (uint8_t)(r + 1); if (n >= DICE_REC) return n; }
+        else if (r == undo) rolls[--n] = 0;
+        else if (r == fim) return n;
+    }
+}
+
+static int split_words(const char *mn, char w[24][12]) {
+    int n = 0;
+    while (*mn && n < 24) {
+        int k = 0;
+        while (*mn == ' ') mn++;
+        while (*mn && *mn != ' ' && k < 11) w[n][k++] = *mn++;
+        w[n][k] = 0;
+        if (k) n++;
+    }
+    return n;
+}
+
+// Asks 3 random positions; each answer is picked among 4 words on the device.
+static int verify_words(const char *mn) {
+    char w[24][12];
+    int n = split_words(mn, w), ok = 1, used[3] = {-1, -1, -1};
+    for (int q = 0; q < 3 && ok; q++) {
+        int idx;
+        do { idx = esp_random() % n; } while (idx == used[0] || idx == used[1]);
+        used[q] = idx;
+        const char *o[4];
+        int good = esp_random() % 4;
+        for (int j = 0; j < 4; j++) {
+            if (j == good) { o[j] = w[idx]; continue; }
+            const char *d;
+            int dup;
+            do {
+                d = BS_BIP39_WORDS[esp_random() % 2048];
+                dup = !strcmp(d, w[idx]);
+                for (int m = 0; m < j; m++) if (o[m] == d) dup = 1;
+            } while (dup);
+            o[j] = d;
+        }
+        char title[24];
+        snprintf(title, sizeof(title), "PALAVRA #%d?", idx + 1);
+        ok = ui_pick(title, "Qual voce anotou?", o, 4, 0) == good;
+    }
+    bs_wipe(w, sizeof(w));
+    return ok;
+}
+
+// Types one BIP39 word with the buttons: only letters that lead to a valid word
+// are offered, and the word list appears as soon as it is short.
+static void enter_word(int pos, int total, char out[12]) {
+    static char L[26][2];
+    char pre[12] = {0}, title[24], info[24];
+    int pl = 0;
+    snprintf(title, sizeof(title), "PALAVRA %d/%d", pos, total);
+    for (;;) {
+        int cnt = 0, first = -1;
+        uint32_t letters = 0;
+        for (int i = 0; i < 2048; i++)
+            if (!strncmp(BS_BIP39_WORDS[i], pre, pl)) {
+                if (first < 0) first = i;
+                cnt++;
+                if ((int)strlen(BS_BIP39_WORDS[i]) > pl) letters |= 1u << (BS_BIP39_WORDS[i][pl] - 'a');
+            }
+        snprintf(info, sizeof(info), "%s_", pre);
+        const char *o[28];
+        int k = 0;
+        if (pl > 0 && cnt <= 8) {
+            for (int i = first; k < cnt; i++) o[k++] = BS_BIP39_WORDS[i];   // the list is sorted
+            o[k++] = "<APAGAR";
+            int r = ui_pick(title, info, o, k, 0);
+            if (r == k - 1) { pre[--pl] = 0; continue; }
+            strcpy(out, o[r]);
+            return;
+        }
+        int exact = pl ? bs_bip39_word_index(pre, pl) : -1;
+        if (exact >= 0) o[k++] = BS_BIP39_WORDS[exact];
+        int nl = k;
+        for (int c = 0; c < 26; c++)
+            if (letters & (1u << c)) { L[c][0] = (char)('a' + c); L[c][1] = 0; o[k++] = L[c]; }
+        if (pl > 0) o[k++] = "<APAGAR";
+        int r = ui_pick(title, info, o, k, 0);
+        if (exact >= 0 && r == 0) { strcpy(out, BS_BIP39_WORDS[exact]); return; }
+        if (pl > 0 && r == k - 1) { pre[--pl] = 0; continue; }
+        (void)nl;
+        pre[pl++] = o[r][0]; pre[pl] = 0;
+    }
+}
+
+// Types a word by its number in the official BIP39 list (1..2048 = line number
+// of english.txt): 4 digits, only digits that can still give 1..2048 are offered,
+// then the word is shown for confirmation.
+static void enter_word_num(int pos, int total, char out[12]) {
+    static const char *const D[10] = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+    char title[24], info[24];
+    snprintf(title, sizeof(title), "PALAVRA %d/%d", pos, total);
+    for (;;) {
+        int v = 0, nd = 0;
+        while (nd < 4) {
+            static const int P10[5] = {1, 10, 100, 1000, 10000};
+            const char *o[11]; int dig[11], k = 0;
+            int rem = 3 - nd;
+            for (int d = 0; d < 10; d++) {
+                int lo = (v * 10 + d) * P10[rem], hi = lo + P10[rem] - 1;
+                if (hi >= 1 && lo <= 2048) { dig[k] = d; o[k++] = D[d]; }
+            }
+            if (nd) { dig[k] = -1; o[k++] = "<APAGAR"; }
+            char shown[8];
+            snprintf(shown, sizeof(shown), "%0*d", nd, v);
+            snprintf(info, sizeof(info), "Numero: %s%s", nd ? shown : "", "____" + nd);
+            int r = ui_pick(title, info, o, k, 0);
+            if (dig[r] < 0) { v /= 10; nd--; continue; }
+            v = v * 10 + dig[r]; nd++;
+        }
+        snprintf(info, sizeof(info), "%04d = %s", v, BS_BIP39_WORDS[v - 1]);
+        static const char *const OK[2] = {"OK", "REFAZER"};
+        if (ui_pick(title, info, OK, 2, 0) == 0) { strcpy(out, BS_BIP39_WORDS[v - 1]); return; }
+    }
+}
+
+static int join_words(char w[24][12], int n, char *mn, size_t cap) {
+    size_t o = 0;
+    for (int i = 0; i < n; i++) o += snprintf(mn + o, cap - o, "%s%s", i ? " " : "", w[i]);
+    return (int)o;
+}
+
+static int import_device(seed_store_t *s) {
+    static const char *const NW[2] = {"12", "24"};
+    int nw = ui_pick("IMPORTAR", "Quantas palavras?", NW, 2, 1) == 0 ? 12 : 24;
+    static const char *const HOW[2] = {"NUMEROS", "LETRAS"};
+    int by_num = ui_pick("DIGITAR POR", "Numero 1-2048 da lista ou letras", HOW, 2, 0) == 0;
+    char w[24][12], mn[400];
+    memset(w, 0, sizeof(w));
+    for (int i = 0; i < nw; i++) (by_num ? enter_word_num : enter_word)(i + 1, nw, w[i]);
+    for (;;) {
+        join_words(w, nw, mn, sizeof(mn));
+        int r = bs_bip39_to_entropy(mn, s->ent, &s->ent_len);
+        if (r == 0) { bs_wipe(w, sizeof(w)); bs_wipe(mn, sizeof(mn)); return 0; }
+        static const char *const FIX[3] = {"CORRIGIR", "REVISAR", "RECOMECAR"};
+        int c = ui_pick("CHECKSUM ERRADO", "Alguma palavra esta errada.", FIX, 3, 0);
+        if (c == 0) {
+            char lab[24][16]; const char *o[24];
+            for (int i = 0; i < nw; i++) { snprintf(lab[i], sizeof(lab[i]), "%d %s", i + 1, w[i]); o[i] = lab[i]; }
+            int i = ui_pick("QUAL PALAVRA?", NULL, o, nw, 0);
+            bs_wipe(lab, sizeof(lab));
+            (by_num ? enter_word_num : enter_word)(i + 1, nw, w[i]);
+        } else if (c == 1) {
+            ui_seed_words(mn);
+        } else {
+            bs_wipe(w, sizeof(w)); bs_wipe(mn, sizeof(mn));
+            return -1;
+        }
+        bs_wipe(mn, sizeof(mn));
+    }
+}
+
+static void pass_device(char *out, size_t cap) {
+    static const char *const YN[2] = {"NENHUMA", "DIGITAR"};
+    if (ui_pick("PASSPHRASE", "Opcional (BIP39).", YN, 2, 0) == 0) { out[0] = 0; return; }
+    static const char *const SETS[4] = {"abcdefghijklmnopqrstuvwxyz", "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                                        "0123456789", ".-_:!@#$%&*?/+=,;()"};
+    static const char *const GRP[7] = {"abc", "ABC", "123", "simbolos", "espaco", "<APAGAR", "FIM"};
+    static char CH[32][2];
+    for (;;) {
+        size_t n = 0;
+        out[0] = 0;
+        for (;;) {
+            char info[24];
+            const size_t tail = TW - 4;   // keep the line on one row
+            snprintf(info, sizeof(info), "%s%s_", n > tail ? ".." : "", n > tail ? out + n - tail : out);
+            int g = ui_pick("PASSPHRASE", info, GRP, 7, 0);
+            if (g < 4) {
+                const char *set = SETS[g], *o[32];
+                int k = 0;
+                for (; set[k]; k++) { CH[k][0] = set[k]; CH[k][1] = 0; o[k] = CH[k]; }
+                int c = ui_pick("LETRA", info, o, k, 0);
+                if (n + 1 < cap) { out[n++] = set[c]; out[n] = 0; }
+            } else if (g == 4) {
+                if (n + 1 < cap) { out[n++] = ' '; out[n] = 0; }
+            } else if (g == 5) {
+                if (n) out[--n] = 0;
+            } else {
+                break;
+            }
+        }
+        static const char *const OK[2] = {"CONFIRMO", "REFAZER"};
+        if (ui_pick("CONFIRA", n ? out : "(vazia)", OK, 2, 0) == 0) return;
+        bs_wipe(out, cap);
+    }
+}
+
+static void setup_seed_device(seed_store_t *s) {
+    char mn[400];
+    for (;;) {
+        static const char *const M[3] = {"GERAR", "DADOS", "IMPORTAR"};
+        int m = ui_pick("NOVA CARTEIRA", "Aperte: troca. Segure: escolhe.", M, 3, 0);
+        if (m <= 1) {
+            uint8_t rolls[DICE_REC];
+            int n = m == 1 ? dice_rolls(rolls) : 0;
+            mix_entropy(s->ent, rolls, n);
+            s->ent_len = 32;
+            bs_wipe(rolls, sizeof(rolls));
+            bs_bip39_from_entropy(s->ent, 32, mn, sizeof(mn));
+            for (;;) {
+                ui_seed_words(mn);
+                if (verify_words(mn)) break;
+                ui_msg("ERROU!", "Veja as palavras", "de novo e anote.", C_RED);
+                vTaskDelay(pdMS_TO_TICKS(1800));
+            }
+            bs_wipe(mn, sizeof(mn));
+        } else if (import_device(s)) {
+            continue;
+        }
+        pass_device(s->pass, sizeof(s->pass));
+        if (seed_save(s)) {
+            ui_msg("ERRO", "Falha ao gravar.", NULL, C_RED);
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+        ui_msg("PRONTO!", "Seed gravada no", "dispositivo.", C_GREEN);
+        vTaskDelay(pdMS_TO_TICKS(1200));
         return;
     }
 }
@@ -425,8 +686,12 @@ void app_main(void) {
     seed_store_t st;
     memset(&st, 0, sizeof(st));
     if (seed_load(&st)) {
-        ui_msg("CONFIGURAR", "Abra o instalador no", "computador e clique em Conectar.", C_YELLOW);
-        setup_seed(&st);
+        if (ui_has_display()) {
+            printf("Sem seed. Configure NO DISPOSITIVO, pelos botoes: o computador nao participa.\n");
+            setup_seed_device(&st);
+        } else {
+            setup_seed(&st);   // board without a screen: serial console only
+        }
     }
     ui_msg("CARREGANDO", "Derivando as chaves...", NULL, C_WHITE);
 

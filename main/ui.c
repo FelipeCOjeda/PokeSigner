@@ -6,6 +6,8 @@
 #include "display.h"
 #include "bs_encode.h"
 #include "bs_bip39.h"
+#include "bs_ur.h"
+#include "qrcodegen.h"
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
@@ -625,4 +627,57 @@ int ui_review(const bs_psbt_t *p, int timeout_ms, int (*abort_cb)(void)) {
     vTaskDelay(pdMS_TO_TICKS(1200));
     s_modal = 0;
     return result;
+}
+
+/* ------------------------------------------------------------ signed PSBT as QR */
+
+#define QR_FRAME_MS   300
+#define QR_TIMEOUT_MS (10 * 60 * 1000)
+
+// Shows the signed PSBT as a UR "crypto-psbt" QR (animated when it does not fit in
+// one code) until a button is pressed, abort_cb() returns non-zero or 10 min pass.
+void ui_qr_psbt(const uint8_t *psbt, size_t len, int (*abort_cb)(void)) {
+    if (!s_disp || !len) return;
+    static uint8_t qr[qrcodegen_BUFFER_LEN_FOR_VERSION(QR_MAXVER)], tmp[qrcodegen_BUFFER_LEN_FOR_VERSION(QR_MAXVER)];
+    static char part[qrcodegen_BUFFER_LEN_FOR_VERSION(QR_MAXVER) * 2];
+    bs_ur_t u;
+    // largest fragment whose part still fits the biggest QR this screen can show
+    size_t frag = 260;
+    for (;;) {
+        bs_ur_init(&u, psbt, len, frag);
+        if (bs_ur_part(&u, 1, part, sizeof(part)) &&
+            qrcodegen_encodeText(part, tmp, qr, qrcodegen_Ecc_LOW, 1, QR_MAXVER, qrcodegen_Mask_AUTO, true)) break;
+        if (frag <= 20) return;
+        frag -= 10;
+    }
+    s_modal = 1;
+    int64_t t0 = esp_timer_get_time();
+    uint32_t seq = 1;
+    for (;;) {
+        bs_ur_part(&u, seq, part, sizeof(part));
+        if (qrcodegen_encodeText(part, tmp, qr, qrcodegen_Ecc_LOW, 1, QR_MAXVER, qrcodegen_Mask_AUTO, true)) {
+            int n = qrcodegen_getSize(qr), side = n * QR_PX;
+            int qy = (LCD_H - side) / 2, qx = QR_TSZ ? (qy > 2 * QR_PX ? qy : 2 * QR_PX) : (LCD_W - side) / 2;
+            char cnt[16];
+            snprintf(cnt, sizeof(cnt), "%u/%u", (unsigned)((seq - 1) % u.seq_len + 1), (unsigned)u.seq_len);
+            const char *L[4] = {"PSBT", "ASSINADA", u.seq_len > 1 ? cnt : "", "BOTAO=SAI"};
+            int tx = qx + side + QR_TSZ / 2, ty = (LCD_H - 4 * QR_TSZ - 3 * (QR_TSZ / 2)) / 2;
+            UI_LOCK();
+            disp_qr(qr, qx, qy, QR_PX, tx, ty, QR_TSZ, L, QR_TSZ ? 4 : 0);
+            UI_UNLOCK();
+        }
+        seq = seq % u.seq_len + 1;
+        for (int t = 0; t < QR_FRAME_MS; t += 20) {
+            if (pressed_main() || pressed_rej()) {
+                while (pressed_main() || pressed_rej()) vTaskDelay(pdMS_TO_TICKS(20));
+                goto out;
+            }
+            if (abort_cb && abort_cb()) goto out;
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+        if ((esp_timer_get_time() - t0) / 1000 > QR_TIMEOUT_MS) break;
+    }
+out:
+    memset(tmp, 0, sizeof(tmp));
+    s_modal = 0;
 }

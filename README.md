@@ -106,6 +106,8 @@ Toque curto = próxima opção, segurar ~0,7 s = escolher (no C3 o GPIO10 volta 
 
 Placas sem tela continuam com a configuração pelo terminal serial.
 
+Depois de assinar, a placa mostra a **PSBT assinada em QR** (UR `crypto-psbt`, animado quando necessário), para transmitir por outra carteira (BlueWallet, Sparrow, Nunchuk...). Qualquer botão fecha; pedidos de ping/info são atendidos com o QR na tela e um novo PSBT fecha o QR.
+
 Comandos no serial depois de iniciado: `info` (descritores), `scan`/`mac` (teste do Bluetooth), `potencia`, `unpair` (apaga
 pareamentos BLE), `wipe` (apaga seed + pareamentos; exige segurar BOOT 5 s).
 

@@ -585,6 +585,8 @@ static void phone_status(const char *m) { ble_send(RSP_STATUS, (const uint8_t *)
 
 static void reply_err(const char *msg) { ble_send(RSP_ERROR, (const uint8_t *)msg, strlen(msg)); }
 
+static size_t s_qr_len;   // signed PSBT in s_out to show as QR (0 = none)
+
 static void handle_sign(const uint8_t *psbt, size_t len) {
     printf("[PSBT] recebido %u bytes, analisando...\n", (unsigned)len);
     if (len >= 5 && memcmp(psbt, "cHNi", 4) == 0) {
@@ -635,39 +637,61 @@ static void handle_sign(const uint8_t *psbt, size_t len) {
     printf("[PSBT] assinado (%u entradas), enviando %u bytes\n", (unsigned)s_psbt.n_sign, (unsigned)olen);
     int sent = ble_send(RSP_SIGNED, s_out, olen);
     if (sent == 0) ui_celebrate("Enviado ao celular.", NULL);
-    else { ui_msg("FALHA BLE", "reconecte e tente", "novamente", C_RED); vTaskDelay(pdMS_TO_TICKS(1500)); }
-    ui_refresh_idle();
+    else { ui_msg("FALHA BLE", "Leia o QR com outra", "carteira.", C_RED); vTaskDelay(pdMS_TO_TICKS(1500)); }
+    s_qr_len = olen;   // the worker shows the QR after releasing the BLE receiver
+}
+
+static int job_pending(void) { return uxQueueMessagesWaiting(s_jobs) > 0; }
+
+static void handle_job(job_t *jp) {
+    job_t j = *jp;
+    switch (j.cmd) {
+    case CMD_PING: {
+        int n = snprintf(s_text, sizeof(s_text), "PokeSigner %s fp=%08" PRIx32, FW_VERSION, bs_signer_fingerprint());
+        ble_send(RSP_PONG, (uint8_t *)s_text, n);
+        break;
+    }
+    case CMD_GET_INFO: {
+        int testnet = j.len >= 1 ? j.payload[0] != 0 : 0;
+        uint32_t acct = j.len >= 5 ? (j.payload[1] | j.payload[2] << 8 | j.payload[3] << 16 | (uint32_t)j.payload[4] << 24) : 0;
+        if (acct >= 0x80000000u) { reply_err("conta invalida"); break; }
+        if (bs_signer_get_info(testnet, acct, s_text, sizeof(s_text))) { reply_err("erro"); break; }
+        printf("[BLE] xpubs enviados (%s, conta %" PRIu32 ")\n", testnet ? "testnet" : "mainnet", acct);
+        ble_send(RSP_INFO, (uint8_t *)s_text, strlen(s_text));
+        break;
+    }
+    case CMD_SIGN_PSBT:
+        handle_sign(j.payload, j.len);
+        break;
+    case CMD_CONFIRM: case CMD_CANCEL: case CMD_NEXT: case CMD_PREV:
+        reply_err("nada para confirmar agora");
+        break;
+    default:
+        reply_err("comando desconhecido");
+    }
+}
+
+// While the QR is on screen: answer quick requests (ping, info, ...) right away and
+// keep the QR; a new PSBT to sign ends the QR screen.
+static int qr_poll(void) {
+    job_t j;
+    if (xQueuePeek(s_jobs, &j, 0) != pdTRUE) return 0;
+    if (j.cmd == CMD_SIGN_PSBT) return 1;
+    if (xQueueReceive(s_jobs, &j, 0) == pdTRUE) { handle_job(&j); ble_release_rx(); }
+    return 0;
 }
 
 static void worker_task(void *arg) {
     job_t j;
     for (;;) {
         if (xQueueReceive(s_jobs, &j, portMAX_DELAY) != pdTRUE) continue;
-        switch (j.cmd) {
-        case CMD_PING: {
-            int n = snprintf(s_text, sizeof(s_text), "PokeSigner %s fp=%08" PRIx32, FW_VERSION, bs_signer_fingerprint());
-            ble_send(RSP_PONG, (uint8_t *)s_text, n);
-            break;
-        }
-        case CMD_GET_INFO: {
-            int testnet = j.len >= 1 ? j.payload[0] != 0 : 0;
-            uint32_t acct = j.len >= 5 ? (j.payload[1] | j.payload[2] << 8 | j.payload[3] << 16 | (uint32_t)j.payload[4] << 24) : 0;
-            if (acct >= 0x80000000u) { reply_err("conta invalida"); break; }
-            if (bs_signer_get_info(testnet, acct, s_text, sizeof(s_text))) { reply_err("erro"); break; }
-            printf("[BLE] xpubs enviados (%s, conta %" PRIu32 ")\n", testnet ? "testnet" : "mainnet", acct);
-            ble_send(RSP_INFO, (uint8_t *)s_text, strlen(s_text));
-            break;
-        }
-        case CMD_SIGN_PSBT:
-            handle_sign(j.payload, j.len);
-            break;
-        case CMD_CONFIRM: case CMD_CANCEL: case CMD_NEXT: case CMD_PREV:
-            reply_err("nada para confirmar agora");
-            break;
-        default:
-            reply_err("comando desconhecido");
-        }
+        handle_job(&j);
         ble_release_rx();
+        if (s_qr_len) {
+            ui_qr_psbt(s_out, s_qr_len, qr_poll);
+            s_qr_len = 0;
+            if (!job_pending()) ui_refresh_idle();
+        }
     }
 }
 

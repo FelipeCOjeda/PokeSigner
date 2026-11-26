@@ -1,6 +1,7 @@
 // Tile renderer over esp_lcd SPI. Two panels:
 //  - C6 Waveshare 1.47: ST7789 via the esp_lcd vendor driver, 320x172 landscape, tiles at 2x
 //  - C3 Spotpear 1.44: ST7735S with a small built-in init sequence, 128x128, tiles at 1x
+#include "qrcodegen.h"
 #include "display.h"
 #if CONFIG_PS_DISPLAY_ST7789
 #include <string.h>
@@ -168,6 +169,41 @@ void disp_grid(const grid_t *g) {
         if (big) r++;
     }
     fill_margin(TOPM + GH * ROWPX, H - TOPM - GH * ROWPX);
+    xSemaphoreTake(s_done, portMAX_DELAY);
+    xSemaphoreGive(s_done);
+    xSemaphoreGive(s_lock);
+}
+
+/* ------------------------------------------------------------ QR code */
+
+// Whole screen, white background: QR modules of px pixels with the top-left corner at
+// qx,qy, and up to 4 short text lines (8x8 font drawn at tsz px) starting at tx,ty.
+void disp_qr(const uint8_t *qr, int qx, int qy, int px, int tx, int ty, int tsz,
+             const char *const *lines, int nl) {
+    if (!s_ready) return;
+    int n = qrcodegen_getSize(qr);
+    const uint16_t wht = 0xFFFF, blk = 0x0000, ink = sw(PAL[P_INK]);
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    for (int y0 = 0; y0 < H; y0 += ROWPX) {
+        int h = H - y0 < ROWPX ? H - y0 : ROWPX;
+        uint16_t *b = s_band[s_cur];
+        for (int y = 0; y < h; y++) {
+            int Y = y0 + y, my = Y >= qy ? (Y - qy) / px : n;
+            uint16_t *row = b + y * W;
+            for (int x = 0; x < W; x++) {
+                int mx = x >= qx ? (x - qx) / px : n;
+                row[x] = (my < n && mx < n && qrcodegen_getModule(qr, mx, my)) ? blk : wht;
+            }
+        }
+        for (int i = 0; i < nl && tsz > 0; i++) {
+            int ly = ty + i * (tsz + tsz / 2);
+            int a = ly > y0 ? ly : y0, z = ly + tsz < y0 + h ? ly + tsz : y0 + h;
+            if (a >= z) continue;
+            for (int k = 0; lines[i][k] && tx + (k + 1) * tsz <= W; k++)
+                put_tile(b + (a - y0) * W, tx + k * tsz, (unsigned char)lines[i][k], tsz, ink, wht, a - ly, z - a);
+        }
+        push(y0, h);
+    }
     xSemaphoreTake(s_done, portMAX_DELAY);
     xSemaphoreGive(s_done);
     xSemaphoreGive(s_lock);

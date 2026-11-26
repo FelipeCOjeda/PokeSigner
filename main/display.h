@@ -39,7 +39,11 @@ void disp_sprite(const char *const rows[16], int box_x, int box_y, int box_w, in
 int  disp_init(uint8_t orientation);
 void disp_grid(const grid_t *g);
 void disp_set_orientation(uint8_t o);   // 0..3, landscape variants
+void disp_qr(const uint8_t *qr, int qx, int qy, int px, int tx, int ty, int tsz,
+             const char *const *lines, int nl);
 #else
+static inline void disp_qr(const uint8_t *q, int a, int b, int c, int d, int e, int f, const char *const *l, int n)
+{ (void)q; (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)l; (void)n; }
 static inline int  disp_init(uint8_t o) { (void)o; return -1; }
 static inline void disp_grid(const grid_t *g) { (void)g; }
 static inline void disp_set_orientation(uint8_t o) { (void)o; }

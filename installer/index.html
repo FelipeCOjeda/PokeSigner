@@ -73,7 +73,7 @@
     <span class="led"></span><span class="lbl px">POWER</span>
     <div class="screen">
       <h1 class="px">POKESIGNER</h1>
-      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.7.1.</p>
+      <p class="sub">Assinador Bitcoin via Bluetooth para placas ESP32 com tela. Firmware 0.8.0.</p>
       <div class="demo"><img src="assets/signy-c6.gif" alt="Signy, o mascote do PokeSigner, comemorando uma assinatura" width="320"><img src="assets/signy-c3.gif" alt="PokeSigner na tela da ESP32-C3" width="192"></div>
     </div>
     <div class="brand px">SIGNER <b>COLOR</b></div>
@@ -204,6 +204,7 @@
       <li>Na tela da placa, confira <b>cada página</b>: destino, valor, troco e taxa. Aperte o botão para avançar (ou ◀ ▶ na carteira).</li>
       <li>Na última página aparece um <b>código de 6 dígitos</b>. Para aprovar: digite o código na carteira <b>ou</b> segure o botão por 2 s.</li>
       <li>Para recusar: toque curto na última página, ✖ na carteira ou o botão de rejeitar (C3).</li>
+      <li>Depois de assinar, a placa mostra a <b>PSBT assinada em QR</b> (animado no padrão UR <code>crypto-psbt</code> quando não cabe num só). Dá para transmitir lendo esse QR em outra carteira, como BlueWallet ou Sparrow. Qualquer botão fecha o QR.</li>
     </ol>
     <div class="note">O código de aprovação só aparece na tela da placa e muda a cada transação: um celular invadido não consegue aprovar sozinho.</div>
 

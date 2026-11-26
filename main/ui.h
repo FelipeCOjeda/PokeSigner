@@ -32,6 +32,8 @@ void ui_passkey(uint32_t code);
 void ui_msg(const char *title, const char *l1, const char *l2, uint16_t color);
 void ui_seed_words(const char *mnemonic);
 // Picker using only the device buttons (tap = next, hold = choose). Returns the chosen index.
+// Signed PSBT as a UR crypto-psbt QR (animated if needed) until a button press.
+void ui_qr_psbt(const uint8_t *psbt, size_t len, int (*abort_cb)(void));
 int  ui_pick(const char *title, const char *info, const char *const *opts, int n, int start);
 void ui_celebrate(const char *l1, const char *l2);   // mascot animation after signing   // pages through the words with BOOT
 

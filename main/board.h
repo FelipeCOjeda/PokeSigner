@@ -59,4 +59,19 @@
 #define TW      (GW - 2)                 // text columns inside a box
 #define TOPM    ((LCD_H - GH * TPX) / 2)
 
-#define FW_VERSION "0.7.1"
+// QR of the signed PSBT: module size in px, largest QR version, side text size (0 = none)
+#if CONFIG_PS_BOARD_C3_SPOTPEAR_144
+#define QR_PX 2
+#define QR_MAXVER 10
+#define QR_TSZ 0
+#elif CONFIG_PS_BOARD_TDISPLAY_114
+#define QR_PX 2
+#define QR_MAXVER 11
+#define QR_TSZ 12
+#else
+#define QR_PX 3
+#define QR_MAXVER 9
+#define QR_TSZ 12
+#endif
+
+#define FW_VERSION "0.8.0"

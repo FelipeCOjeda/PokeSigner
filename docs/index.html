@@ -119,11 +119,36 @@
       <li><b>PASSPHRASE:</b> nenhuma ou digitada nos botões, com revisão antes de gravar.</li>
     </ul>
 
+    <h3 class="px">CONECTAR A PLACA</h3>
+    <p class="muted">Necessário para o modo <b>VIA PC</b> e para diagnóstico (info, girar a tela, potência e teste do Bluetooth). Clique em <b>Conectar</b> com a placa no cabo.</p>
+    <div class="row">
+      <button id="btnConnect">Conectar</button>
+      <button id="btnMenu" disabled>Mostrar menu</button>
+      <button id="btnReset" class="sec" disabled>Reiniciar placa</button>
+      <button id="btnClear" class="dark">Limpar</button>
+      <span id="status" class="status off">desconectado</span>
+    </div>
+    <div id="term"></div>
+    <div class="row">
+      <input id="cmd" placeholder="digite aqui e aperte Enter" autocomplete="off" spellcheck="false" disabled>
+      <label class="muted"><input type="checkbox" id="mask"> ocultar</label>
+      <button id="btnSend" disabled>Enviar</button>
+    </div>
+    <div class="row">
+      <span class="muted">Atalhos:</span>
+      <button class="sec quick" data-v="info" disabled>info</button>
+      <button class="sec quick" data-v="girar" disabled>girar tela</button>
+      <button class="sec quick" data-v="potencia" disabled>potência BLE</button>
+      <button class="sec quick" data-v="scan" disabled>teste BLE</button>
+      <button class="sec quick" data-v="mac" disabled>endereço BLE</button>
+      <button class="sec quick" data-v="unpair" disabled>unpair</button>
+    </div>
+
     <h3 class="px">IMPORTAR PELO COMPUTADOR (TECLADO VIRTUAL)</h3>
     <p>Mais rápido que pelos botões. Use <b>só para importar</b> uma seed que você já tem; para criar uma nova, use GERAR ou DADOS na placa.</p>
     <ol>
       <li>Na placa, escolha <b>VIA PC</b> (a placa só aceita palavras do computador nesse modo, escolhido por você no dispositivo).</li>
-      <li>Clique em <b>Conectar</b> (abaixo, no terminal).</li>
+      <li>Clique em <b>Conectar</b> (acima).</li>
       <li><b>Desligue a internet</b> (Wi-Fi e cabo). Esta página continua funcionando sem internet.</li>
       <li>Digite <b>clicando</b> no teclado virtual. As teclas mudam de lugar a cada palavra.</li>
       <li>Clique em <b>Enviar para a placa</b> e confira as palavras na tela da placa.</li>
@@ -162,30 +187,6 @@
       <span id="vkState" class="muted">Escolha VIA PC na placa e conecte.</span>
     </div>
 
-    <h3 class="px">TERMINAL (OPCIONAL)</h3>
-    <p class="muted">Só para diagnóstico: info, girar a tela, potência e teste do Bluetooth. Clique em <b>Conectar</b> com a placa no cabo.</p>
-    <div class="row">
-      <button id="btnConnect">Conectar</button>
-      <button id="btnMenu" disabled>Mostrar menu</button>
-      <button id="btnReset" class="sec" disabled>Reiniciar placa</button>
-      <button id="btnClear" class="dark">Limpar</button>
-      <span id="status" class="status off">desconectado</span>
-    </div>
-    <div id="term"></div>
-    <div class="row">
-      <input id="cmd" placeholder="digite aqui e aperte Enter" autocomplete="off" spellcheck="false" disabled>
-      <label class="muted"><input type="checkbox" id="mask"> ocultar</label>
-      <button id="btnSend" disabled>Enviar</button>
-    </div>
-    <div class="row">
-      <span class="muted">Atalhos:</span>
-      <button class="sec quick" data-v="info" disabled>info</button>
-      <button class="sec quick" data-v="girar" disabled>girar tela</button>
-      <button class="sec quick" data-v="potencia" disabled>potência BLE</button>
-      <button class="sec quick" data-v="scan" disabled>teste BLE</button>
-      <button class="sec quick" data-v="mac" disabled>endereço BLE</button>
-      <button class="sec quick" data-v="unpair" disabled>unpair</button>
-    </div>
   </div>
 
   <div class="card">
